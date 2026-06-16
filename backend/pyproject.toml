@@ -1,0 +1,5 @@
+[project]
+name = "profit-cal"
+version = "1.0.0"
+description = "资产管理与价格监控系统"
+requires-python = ">=3.8"

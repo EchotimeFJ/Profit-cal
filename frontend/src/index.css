@@ -1,0 +1,301 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer base {
+  :root {
+    --color-coinbase-blue: #0052ff;
+    --color-coinbase-blue-active: #003ecc;
+    --color-coinbase-blue-disabled: #a8b8cc;
+    --color-accent-yellow: #f4b000;
+    --color-canvas: #ffffff;
+    --color-surface-soft: #f7f7f7;
+    --color-surface-strong: #eef0f3;
+    --color-surface-dark: #0a0b0d;
+    --color-surface-dark-elevated: #16181c;
+    --color-hairline: #dee1e6;
+    --color-ink: #0a0b0d;
+    --color-body: #5b616e;
+    --color-muted: #7c828a;
+    --color-on-primary: #ffffff;
+    --color-on-dark: #ffffff;
+    --color-on-dark-soft: #a8acb3;
+    --color-semantic-up: #05b169;
+    --color-semantic-down: #cf202f;
+    --shadow-soft: 0 4px 12px rgba(0, 0, 0, 0.04);
+    color-scheme: light;
+  }
+
+  :root[data-theme='dark'] {
+    --color-coinbase-blue: #5b8dff;
+    --color-coinbase-blue-active: #7da5ff;
+    --color-coinbase-blue-disabled: #3b557a;
+    --color-accent-yellow: #f6c34a;
+    --color-canvas: #11161d;
+    --color-surface-soft: #1a2029;
+    --color-surface-strong: #252d39;
+    --color-surface-dark: #0f1319;
+    --color-surface-dark-elevated: #1a2029;
+    --color-hairline: #343d4a;
+    --color-ink: #eef3f8;
+    --color-body: #d6dde8;
+    --color-muted: #9ca8b8;
+    --color-on-primary: #ffffff;
+    --color-on-dark: #ffffff;
+    --color-on-dark-soft: #b8c1cd;
+    --color-semantic-up: #35d58b;
+    --color-semantic-down: #ff6b7a;
+    --shadow-soft: 0 12px 32px rgba(0, 0, 0, 0.28);
+    color-scheme: dark;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    line-height: 1.5;
+    letter-spacing: 0;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .font-number {
+    font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+    font-weight: 500;
+  }
+
+  .font-display {
+    font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-weight: 500;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    background-color: var(--color-coinbase-blue);
+    color: var(--color-on-primary);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 20px;
+    height: 44px;
+    border-radius: 100px;
+    transition: background-color 0.2s;
+  }
+
+  .btn-primary:hover {
+    background-color: var(--color-coinbase-blue-active);
+  }
+
+  .btn-secondary {
+    background-color: var(--color-surface-strong);
+    color: var(--color-ink);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 12px 20px;
+    height: 44px;
+    border-radius: 100px;
+    transition: background-color 0.2s;
+  }
+
+  .btn-secondary:hover {
+    background-color: var(--color-surface-soft);
+  }
+
+  .card-dark {
+    background-color: var(--color-surface-dark-elevated);
+    color: var(--color-on-dark);
+    border-radius: 24px;
+    padding: 32px;
+  }
+
+  .card-light {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    border-radius: 24px;
+    padding: 32px;
+    box-shadow: var(--shadow-soft);
+  }
+
+  .input {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    border-radius: 12px;
+    padding: 16px;
+    height: 48px;
+    border: 1px solid var(--color-hairline);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .input:focus {
+    border-color: var(--color-coinbase-blue);
+    border-width: 2px;
+  }
+
+  .asset-row {
+    display: flex;
+    align-items: center;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--color-hairline);
+  }
+
+  .asset-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+    background-color: var(--color-surface-strong);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .text-semantic-up {
+    color: var(--color-semantic-up);
+  }
+
+  .text-semantic-down {
+    color: var(--color-semantic-down);
+  }
+
+  .btn-text {
+    background-color: transparent;
+    color: var(--color-coinbase-blue);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+
+  .btn-text:hover {
+    opacity: 0.8;
+  }
+
+  .text-muted {
+    color: var(--color-muted);
+  }
+
+  .text-ink {
+    color: var(--color-ink);
+  }
+
+  .text-on-dark {
+    color: var(--color-on-dark);
+  }
+
+  .text-on-dark-soft {
+    color: var(--color-on-dark-soft);
+  }
+
+  .bg-surface-dark {
+    background-color: var(--color-surface-dark);
+  }
+
+  .bg-surface-soft {
+    background-color: var(--color-surface-soft);
+  }
+
+  .border-hairline {
+    border-color: var(--color-hairline);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+.bg-canvas {
+  background-color: var(--color-canvas) !important;
+}
+
+.bg-surface-soft {
+  background-color: var(--color-surface-soft) !important;
+}
+
+.bg-surface-strong {
+  background-color: var(--color-surface-strong) !important;
+}
+
+.bg-surface-dark,
+.bg-background {
+  background-color: var(--color-surface-dark) !important;
+}
+
+.text-ink,
+.text-foreground,
+.text-body-strong {
+  color: var(--color-ink) !important;
+}
+
+.text-body {
+  color: var(--color-body) !important;
+}
+
+.text-muted,
+.text-muted-foreground {
+  color: var(--color-muted) !important;
+}
+
+.text-on-dark {
+  color: var(--color-on-dark) !important;
+}
+
+.text-on-dark-soft,
+.text-muted-soft {
+  color: var(--color-on-dark-soft) !important;
+}
+
+.border-hairline,
+.border-border {
+  border-color: var(--color-hairline) !important;
+}
+
+.shadow-soft {
+  box-shadow: var(--shadow-soft) !important;
+}
+
+:root[data-theme='dark'] .bg-canvas,
+:root[data-theme='dark'] .card-light,
+:root[data-theme='dark'] .card-dark {
+  background-color: var(--color-surface-soft) !important;
+}
+
+:root[data-theme='dark'] .input,
+:root[data-theme='dark'] input,
+:root[data-theme='dark'] select,
+:root[data-theme='dark'] textarea {
+  background-color: var(--color-surface-strong) !important;
+  color: var(--color-ink) !important;
+  border-color: var(--color-hairline) !important;
+}
+
+:root[data-theme='dark'] input::placeholder,
+:root[data-theme='dark'] textarea::placeholder {
+  color: var(--color-muted) !important;
+}
+
+:root[data-theme='dark'] button:disabled {
+  color: color-mix(in srgb, var(--color-muted) 70%, transparent) !important;
+  border-color: color-mix(in srgb, var(--color-hairline) 70%, transparent) !important;
+}
