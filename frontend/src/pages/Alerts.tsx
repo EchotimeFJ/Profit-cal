@@ -109,14 +109,14 @@ export const Alerts: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-4xl mx-auto px-4 py-5 sm:py-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
         <div>
           <h1 className="text-title-lg font-bold text-ink mb-1">价格提醒</h1>
           <p className="text-body text-muted">设置价格预警，不错过任何机会</p>
         </div>
         {assets.length > 0 && (
-          <Button onClick={() => setShowModal(true)}>
+          <Button onClick={() => setShowModal(true)} className="w-full sm:w-auto">
             <Plus className="w-5 h-5 mr-2" />
             添加提醒
           </Button>
@@ -160,9 +160,9 @@ export const Alerts: React.FC = () => {
               >
                 <Card className={alert.triggered ? 'opacity-60' : ''}>
                   <CardContent className="py-5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center flex-1">
-                        <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center mr-4">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-start sm:items-center flex-1 min-w-0">
+                        <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center mr-3 sm:mr-4 shrink-0">
                           {alert.triggered ? (
                             <CheckCircle2 className="w-6 h-6 text-semantic-up" />
                           ) : alert.is_active ? (
@@ -171,8 +171,8 @@ export const Alerts: React.FC = () => {
                             <Clock className="w-6 h-6 text-muted" />
                           )}
                         </div>
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
                             <h3 className="text-title-sm font-semibold text-ink">
                               {asset?.name || '未知资产'}
                             </h3>
@@ -189,7 +189,7 @@ export const Alerts: React.FC = () => {
                             </span>{' '}
                             时提醒
                           </p>
-                          <div className="flex items-center space-x-3 text-caption text-muted">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-caption text-muted">
                             <span>
                               {alert.notification_method === 'popup' ? '弹窗提醒' : 
                                alert.notification_method === 'vibrate' ? '震动提醒' : '两者都有'}
@@ -209,7 +209,7 @@ export const Alerts: React.FC = () => {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2 ml-4">
+                      <div className="flex items-center gap-2 sm:ml-4">
                         <Button variant="ghost" size="sm" onClick={() => handleEdit(alert)}>
                           <Edit2 className="w-4 h-4" />
                         </Button>

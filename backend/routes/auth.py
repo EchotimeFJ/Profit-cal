@@ -14,6 +14,9 @@ def _extract_password(data):
         return decrypt_password(data['encrypted_password'])
     return data.get('password')
 
+def _normalize_email(value):
+    return (value or '').strip().lower()
+
 @auth_bp.route('/password-key', methods=['GET'])
 def password_key():
     return jsonify({
@@ -122,3 +125,37 @@ def update_user():
         'message': '更新成功',
         'user': user.to_dict()
     })
+
+@auth_bp.route('/change-password', methods=['PUT'])
+@jwt_required()
+def change_password():
+    user_id = _current_user_id()
+    user = User.query.get(user_id)
+
+    if not user:
+        return jsonify({'error': '用户不存在'}), 404
+
+    data = request.get_json() or {}
+    email = _normalize_email(data.get('email'))
+
+    if not email:
+        return jsonify({'error': '请输入绑定邮箱'}), 400
+
+    if email != _normalize_email(user.email):
+        return jsonify({'error': '绑定邮箱校验失败'}), 400
+
+    if not (data.get('password') or data.get('encrypted_password')):
+        return jsonify({'error': '请输入新密码'}), 400
+
+    try:
+        password = _extract_password(data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+
+    if not password or len(password.strip()) < 6:
+        return jsonify({'error': '新密码至少需要 6 位'}), 400
+
+    user.set_password(password)
+    db.session.commit()
+
+    return jsonify({'message': '密码修改成功'})

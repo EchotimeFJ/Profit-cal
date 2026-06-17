@@ -35,68 +35,26 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   ];
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: 'var(--color-canvas)' }}>
-      {/* Top Navigation - Light */}
-      <nav style={{ 
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 50,
-        height: '64px',
-        backgroundColor: 'var(--color-canvas)',
-        borderBottom: '1px solid var(--color-hairline)'
-      }}>
-        <div style={{ 
-          maxWidth: '1248px',
-          margin: '0 auto',
-          padding: '0 24px',
-          height: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between'
-        }}>
-          {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '32px' }}>
-            <Link to="/dashboard" style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '12px', 
-              textDecoration: 'none' 
-            }}>
-              <TrendingUp style={{ width: '24px', height: '24px', color: 'var(--color-coinbase-blue)' }} />
-              <span style={{ 
-                fontSize: '20px', 
-                fontWeight: '600', 
-                color: 'var(--color-ink)',
-                fontFamily: '"Inter", "Noto Sans SC", -apple-system, system-ui, "PingFang SC", "Microsoft YaHei", sans-serif'
-              }} className="font-display">
-                收益管家
-              </span>
+    <div className="min-h-screen bg-canvas">
+      <nav className="fixed inset-x-0 top-0 z-50 border-b border-hairline bg-canvas/95 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+          <div className="flex items-center gap-3 sm:gap-8">
+            <Link to="/dashboard" className="flex items-center gap-2.5 no-underline">
+              <TrendingUp className="h-5 w-5 text-coinbase-blue sm:h-6 sm:w-6" />
+              <span className="font-display text-lg font-semibold text-ink sm:text-xl">收益管家</span>
             </Link>
-            
-            {/* Desktop Navigation */}
-            <div style={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap: '24px'
-            }}>
+
+            <div className="hidden md:flex items-center gap-6">
               {navItems.map((item) => {
                 const isActive = location.pathname === item.path;
-                
+
                 return (
                   <Link
                     key={item.path}
                     to={item.path}
-                    style={{
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      color: isActive ? 'var(--color-ink)' : 'var(--color-muted)',
-                      textDecoration: 'none',
-                      transition: 'color 0.2s'
-                    }}
-                    onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--color-ink)'; }}
-                    onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.color = 'var(--color-muted)'; }}
+                    className={`text-sm font-medium no-underline transition-colors ${
+                      isActive ? 'text-ink' : 'text-muted hover:text-ink'
+                    }`}
                   >
                     {item.label}
                   </Link>
@@ -105,70 +63,58 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             </div>
           </div>
 
-          {/* Right side */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden md:block text-right">
+              <p className="text-sm font-semibold text-ink leading-5">{user?.username}</p>
+              <p className="text-xs text-muted leading-5">{user?.email}</p>
+            </div>
+
             <button
               onClick={toggleTheme}
-              className="btn-secondary"
-              style={{
-                width: '44px',
-                padding: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
+              className="btn-secondary !px-0 w-11 flex items-center justify-center"
               title={isDark ? '切换为浅色模式' : '切换为黑暗模式'}
               aria-label={isDark ? '切换为浅色模式' : '切换为黑暗模式'}
             >
-              {isDark ? (
-                <Sun style={{ width: '16px', height: '16px' }} />
-              ) : (
-                <Moon style={{ width: '16px', height: '16px' }} />
-              )}
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
 
-            {/* User info */}
-            <div style={{ textAlign: 'right' }}>
-              <p style={{ 
-                fontSize: '14px', 
-                fontWeight: '600', 
-                color: 'var(--color-ink)',
-                lineHeight: '1.5'
-              }}>
-                {user?.username}
-              </p>
-              <p style={{ 
-                fontSize: '12px', 
-                color: 'var(--color-muted)',
-                lineHeight: '1.5'
-              }}>
-                {user?.email}
-              </p>
-            </div>
-            
-            {/* Logout button */}
             <button
               onClick={handleLogout}
-              className="btn-secondary"
-              style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+              className="btn-secondary !px-0 w-11 flex items-center justify-center"
               title="退出登录"
+              aria-label="退出登录"
             >
-              <LogOut style={{ width: '16px', height: '16px' }} />
+              <LogOut className="h-4 w-4" />
             </button>
           </div>
         </div>
       </nav>
 
-      {/* Main content */}
-      <main style={{ paddingTop: '64px' }}>
-        <div style={{ 
-          maxWidth: '1248px',
-          margin: '0 auto',
-          padding: '24px'
-        }}>
-          {children}
-        </div>
+      <main className="pt-16 pb-24 md:pb-8">
+        <div className="mx-auto max-w-6xl px-0 sm:px-2">{children}</div>
       </main>
+
+      <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-hairline bg-canvas/95 backdrop-blur md:hidden">
+        <div className="grid grid-cols-4 px-2 py-2">
+          {navItems.map((item) => {
+            const isActive = location.pathname === item.path;
+            const Icon = item.icon;
+
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 no-underline transition-colors ${
+                  isActive ? 'bg-surface-soft text-coinbase-blue' : 'text-muted'
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+                <span className="text-[11px] font-medium leading-none">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 };

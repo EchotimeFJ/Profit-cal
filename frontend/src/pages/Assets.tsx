@@ -250,19 +250,19 @@ export const Assets: React.FC = () => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-4xl mx-auto px-4 py-5 sm:py-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
         <div>
           <h1 className="text-title-lg font-bold text-ink mb-1">资产</h1>
           <p className="text-body text-muted">管理您的投资组合</p>
         </div>
-        <Button onClick={() => setShowModal(true)}>
+        <Button onClick={() => setShowModal(true)} className="w-full sm:w-auto">
           <Plus className="w-5 h-5 mr-2" />
           添加资产
         </Button>
       </div>
 
-      <div className="flex items-center gap-2 mb-6 border-b border-hairline">
+      <div className="flex items-center gap-2 mb-6 border-b border-hairline overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveTab('positions')}
@@ -313,28 +313,28 @@ export const Assets: React.FC = () => {
             >
               <Card>
                 <CardContent className="py-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center flex-1">
-                      <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center mr-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start sm:items-center flex-1 min-w-0">
+                      <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center mr-3 sm:mr-4 shrink-0">
                         <span className="text-title-sm font-semibold text-ink">
                           {asset.symbol.substring(0, 2).toUpperCase()}
                         </span>
                       </div>
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="text-title-sm font-semibold text-ink">{asset.name}</h3>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h3 className="text-title-sm font-semibold text-ink break-words">{asset.name}</h3>
                           <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
                             {getAssetTypeLabel(asset.asset_type)}
                           </span>
                         </div>
-                        <p className="text-body-sm text-muted">{asset.symbol}</p>
+                        <p className="text-body-sm text-muted break-all">{asset.symbol}</p>
                         <p className="text-body-sm text-muted mt-1">
                           持有 {formatAssetQuantity(asset.quantity, asset.asset_type)} · 买入价 {formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2 ml-4">
-                      <Button variant="outline" size="sm" onClick={() => handleSell(asset)}>
+                    <div className="flex items-center gap-2 sm:ml-4">
+                      <Button variant="outline" size="sm" onClick={() => handleSell(asset)} className="flex-1 sm:flex-none">
                         <Banknote className="w-4 h-4 mr-1" />
                         卖出/清仓
                       </Button>
@@ -368,23 +368,23 @@ export const Assets: React.FC = () => {
             records.map((record) => (
               <Card key={record.id}>
                 <CardContent className="py-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="flex items-center flex-1">
-                      <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center mr-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start sm:items-center flex-1 min-w-0">
+                      <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center mr-3 sm:mr-4 shrink-0">
                         {record.action === 'buy' ? (
                           <Plus className="w-5 h-5 text-semantic-up" />
                         ) : (
                           <Banknote className="w-5 h-5 text-coinbase-blue" />
                         )}
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <h3 className="text-title-sm font-semibold text-ink">{record.asset_name}</h3>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h3 className="text-title-sm font-semibold text-ink break-words">{record.asset_name}</h3>
                           <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
                             {record.action === 'buy' ? '买入' : '卖出'}
                           </span>
                         </div>
-                        <p className="text-body-sm text-muted">
+                        <p className="text-body-sm text-muted break-all">
                           {record.symbol} · {getAssetTypeLabel(record.asset_type)} · {new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}
                         </p>
                         <p className="text-body-sm text-muted mt-1">
@@ -393,7 +393,7 @@ export const Assets: React.FC = () => {
                       </div>
                     </div>
                     {record.action === 'sell' && (
-                      <div className="text-right">
+                      <div className="text-left sm:text-right">
                         <p className={`font-number text-title-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
                           {formatCurrency(record.realized_profit || 0, record.currency)}
                         </p>
@@ -591,7 +591,7 @@ export const Assets: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex space-x-3 pt-2">
+                <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
                   <Button type="submit" className="flex-1">
                     {editingAsset ? '保存' : '添加'}
                   </Button>
@@ -697,7 +697,7 @@ export const Assets: React.FC = () => {
                   卖出会记录到交易历史并计算已实现盈亏；如果卖出数量等于当前持仓，将自动清仓。
                 </div>
 
-                <div className="flex space-x-3 pt-2">
+                <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
                   <Button type="submit" className="flex-1">
                     确认卖出
                   </Button>

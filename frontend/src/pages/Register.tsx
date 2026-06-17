@@ -35,24 +35,24 @@ export const Register: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-surface-dark flex items-center justify-center py-8">
-      <div className="w-full max-w-md px-6">
+    <div className="min-h-screen bg-surface-dark flex items-center justify-center px-4 py-8 sm:px-6">
+      <div className="w-full max-w-md">
         {/* Logo & Header */}
-        <div className="text-center mb-12">
-          <div className="flex items-center justify-center mb-6">
-            <TrendingUp className="w-12 h-12 text-coinbase-blue" />
+        <div className="text-center mb-8 sm:mb-12">
+          <div className="flex items-center justify-center mb-5 sm:mb-6">
+            <TrendingUp className="w-11 h-11 sm:w-12 sm:h-12 text-coinbase-blue" />
           </div>
-          <h1 className="text-display-lg text-on-dark mb-4">收益管家</h1>
-          <p className="text-body-md text-on-dark-soft">
+          <h1 className="font-display text-[40px] leading-none sm:text-[52px] font-medium text-on-dark mb-3 sm:mb-4">收益管家</h1>
+          <p className="text-sm sm:text-base text-on-dark-soft">
             管理资产、查看收益、跟踪实时价格
           </p>
         </div>
 
         {/* Register Card */}
         <div className="card-dark">
-          <h2 className="text-title-lg text-on-dark mb-8">创建账户</h2>
+          <h2 className="font-display text-[28px] sm:text-[32px] font-medium text-on-dark mb-6 sm:mb-8 leading-tight">创建账户</h2>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
             <div>
               <label className="block text-sm font-medium text-on-dark mb-2">
                 用户名
@@ -129,8 +129,8 @@ export const Register: React.FC = () => {
             </button>
           </form>
 
-          <div className="mt-8 text-center">
-            <p className="text-body-md text-on-dark-soft">
+          <div className="mt-6 sm:mt-8 text-center">
+            <p className="text-sm sm:text-base text-on-dark-soft">
               已有账户？{' '}
               <Link
                 to="/login"

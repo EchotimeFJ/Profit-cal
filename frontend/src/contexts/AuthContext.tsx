@@ -8,6 +8,7 @@ interface AuthContextType extends AuthState {
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<User>) => Promise<void>;
+  changePassword: (email: string, password: string) => Promise<void>;
   loading: boolean;
 }
 
@@ -97,6 +98,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }));
   };
 
+  const changePassword = async (email: string, password: string) => {
+    const encryptedPassword = await encryptPassword(password);
+    await api.put<{ message: string }>('/auth/change-password', {
+      email,
+      encrypted_password: encryptedPassword,
+    });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -105,6 +114,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         register,
         logout,
         updateUser,
+        changePassword,
         loading,
       }}
     >

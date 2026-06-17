@@ -133,19 +133,14 @@ export const Dashboard: React.FC = () => {
     <div style={{ 
       maxWidth: '1200px', 
       margin: '0 auto', 
-      padding: '24px',
+      padding: '20px 16px 24px',
       backgroundColor: 'var(--color-canvas)'
     }}>
       {/* Header */}
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center',
-        marginBottom: '48px'
-      }}>
+      <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between" style={{ marginBottom: '32px' }}>
         <div>
           <h1 style={{ 
-            fontSize: '36px', 
+            fontSize: 'clamp(30px, 8vw, 36px)', 
             fontWeight: '600', 
             lineHeight: '1.11', 
             letterSpacing: 0,
@@ -161,8 +156,8 @@ export const Dashboard: React.FC = () => {
             欢迎回来，{user?.username}
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-muted)', fontSize: '14px' }}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+          <label className="flex items-center justify-between gap-3 text-sm text-muted">
             结算货币
             <select
               value={settlementCurrency}
@@ -188,7 +183,7 @@ export const Dashboard: React.FC = () => {
             onClick={handleRefresh} 
             disabled={refreshing}
             className="btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
             <RefreshCw 
               style={{ 
@@ -209,7 +204,7 @@ export const Dashboard: React.FC = () => {
           animate={{ opacity: 1, y: 0 }}
           className="card-light"
           style={{ 
-            marginBottom: '48px',
+            marginBottom: '32px',
             borderLeft: '4px solid var(--color-accent-yellow)' 
           }}
         >
@@ -256,8 +251,8 @@ export const Dashboard: React.FC = () => {
         <div style={{ 
           display: 'grid', 
           gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
-          gap: '24px',
-          marginBottom: '48px'
+          gap: '16px',
+          marginBottom: '32px'
         }}>
           <motion.div
             key={`total-${summary.currency}`}
@@ -272,7 +267,7 @@ export const Dashboard: React.FC = () => {
               backgroundColor: 'color-mix(in srgb, var(--color-coinbase-blue) 8%, var(--color-canvas))',
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between" style={{ marginBottom: '18px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-coinbase-blue)' }}>
                 <Wallet style={{ width: '18px', height: '18px' }} />
                 <span style={{ fontSize: '15px', fontWeight: 600 }}>总账户情况</span>
@@ -358,14 +353,7 @@ export const Dashboard: React.FC = () => {
 
       {/* Portfolio List */}
       <div>
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: '16px',
-          flexWrap: 'wrap',
-          marginBottom: '24px'
-        }}>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between" style={{ marginBottom: '24px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <h2 style={{
               fontSize: '18px',
@@ -378,12 +366,7 @@ export const Dashboard: React.FC = () => {
             <div
               role="tablist"
               aria-label="持仓资产类型筛选"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                flexWrap: 'wrap',
-              }}
+              className="flex items-center gap-2 overflow-x-auto pb-1"
             >
               {assetFilters.map((filter) => {
                 const isActive = assetFilter === filter.value;
@@ -414,8 +397,8 @@ export const Dashboard: React.FC = () => {
               })}
             </div>
           </div>
-          <Link to="/assets">
-            <button className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Link to="/assets" className="w-full md:w-auto">
+            <button className="btn-primary w-full md:w-auto" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <Plus style={{ width: '16px', height: '16px' }} />
               添加资产
             </button>
@@ -425,7 +408,7 @@ export const Dashboard: React.FC = () => {
         {portfolio.length === 0 ? (
           <div style={{ 
             textAlign: 'center', 
-            padding: '64px 32px', 
+            padding: '48px 24px', 
             backgroundColor: 'var(--color-surface-soft)', 
             borderRadius: '24px' 
           }}>
@@ -448,7 +431,7 @@ export const Dashboard: React.FC = () => {
         ) : filteredPortfolio.length === 0 ? (
           <div style={{
             textAlign: 'center',
-            padding: '56px 32px',
+            padding: '44px 24px',
             backgroundColor: 'var(--color-surface-soft)',
             border: '1px solid var(--color-hairline)',
             borderRadius: '24px'
@@ -480,7 +463,7 @@ export const Dashboard: React.FC = () => {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.5 + index * 0.05 }}
                 className="asset-row"
-                style={{ padding: '16px 24px' }}
+                style={{ padding: '16px' }}
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-surface-soft)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-canvas)'; }}
               >
@@ -503,88 +486,82 @@ const AssetRow: React.FC<AssetRowProps> = ({ asset }) => {
   const dailyProfitColor = asset.daily_profit && asset.daily_profit >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'space-between', 
-      width: '100%' 
-    }}>
+    <div className="flex w-full flex-col gap-4 md:flex-row md:items-center md:justify-between">
       {/* Asset Info */}
-      <div style={{ flex: 1 }}>
+      <div className="flex-1 min-w-0">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <div className="asset-icon">
             <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--color-ink)' }}>
               {asset.symbol.substring(0, 2).toUpperCase()}
             </span>
           </div>
-          <div>
-            <h3 style={{ fontSize: '16px', fontWeight: '600', color: 'var(--color-ink)', lineHeight: '1.25' }}>
+          <div className="min-w-0">
+            <h3 className="truncate" style={{ fontSize: '16px', fontWeight: '600', color: 'var(--color-ink)', lineHeight: '1.25' }}>
               {asset.name}
             </h3>
-            <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>{asset.symbol}</p>
+            <p className="break-all" style={{ fontSize: '14px', color: 'var(--color-muted)' }}>{asset.symbol}</p>
           </div>
         </div>
       </div>
 
-      {/* Holding Info */}
-      <div style={{ flex: 1, textAlign: 'center' }}>
-        <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
-          {formatAssetQuantity(asset.quantity, asset.asset_type)}
-        </p>
-        <p style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
-          成本价：{formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}
-        </p>
-      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:flex md:flex-1">
+        <div className="md:flex-1 md:text-center">
+          <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
+            {formatAssetQuantity(asset.quantity, asset.asset_type)}
+          </p>
+          <p style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
+            成本价：{formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}
+          </p>
+        </div>
 
-      {/* Current Price */}
-      <div style={{ flex: 1, textAlign: 'center' }}>
-        {asset.current_price !== null ? (
-          <>
-            <p style={{ 
-              fontSize: '16px', 
-              fontWeight: '600', 
-              color: 'var(--color-ink)',
-              lineHeight: '1.25'
-            }} className="font-number">
-              {formatAssetPrice(asset.current_price, asset.currency, asset.asset_type)}
-            </p>
-            <p style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
-              市值：{formatCurrency(asset.current_value || 0, asset.currency)}
-            </p>
-          </>
-        ) : (
-          <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>暂无价格</p>
-        )}
-      </div>
+        <div className="md:flex-1 md:text-center">
+          {asset.current_price !== null ? (
+            <>
+              <p style={{ 
+                fontSize: '16px', 
+                fontWeight: '600', 
+                color: 'var(--color-ink)',
+                lineHeight: '1.25'
+              }} className="font-number">
+                {formatAssetPrice(asset.current_price, asset.currency, asset.asset_type)}
+              </p>
+              <p style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
+                市值：{formatCurrency(asset.current_value || 0, asset.currency)}
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>暂无价格</p>
+          )}
+        </div>
 
-      {/* P&L */}
-      <div style={{ flex: 1, textAlign: 'right' }}>
-        {asset.current_price !== null ? (
-          <>
-            <p style={{ 
-              fontSize: '16px', 
-              fontWeight: '600', 
-              color: profitColor,
-              lineHeight: '1.25'
-            }} className="font-number">
-              {formatCurrency(asset.profit || 0, asset.currency)}
-            </p>
-            <p style={{ 
-              fontSize: '14px', 
-              color: profitColor 
-            }} className="font-number">
-              {formatPercent(asset.profit_percent || 0)}
-            </p>
-            <p style={{ 
-              fontSize: '12px', 
-              color: dailyProfitColor 
-            }} className="font-number">
-              今日：{formatCurrency(asset.daily_profit || 0, asset.currency)}
-            </p>
-          </>
-        ) : (
-          <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>—</p>
-        )}
+        <div className="md:flex-1 md:text-right">
+          {asset.current_price !== null ? (
+            <>
+              <p style={{ 
+                fontSize: '16px', 
+                fontWeight: '600', 
+                color: profitColor,
+                lineHeight: '1.25'
+              }} className="font-number">
+                {formatCurrency(asset.profit || 0, asset.currency)}
+              </p>
+              <p style={{ 
+                fontSize: '14px', 
+                color: profitColor 
+              }} className="font-number">
+                {formatPercent(asset.profit_percent || 0)}
+              </p>
+              <p style={{ 
+                fontSize: '12px', 
+                color: dailyProfitColor 
+              }} className="font-number">
+                今日：{formatCurrency(asset.daily_profit || 0, asset.currency)}
+              </p>
+            </>
+          ) : (
+            <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>—</p>
+          )}
+        </div>
       </div>
     </div>
   );

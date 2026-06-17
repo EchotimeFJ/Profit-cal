@@ -27,63 +27,30 @@ export const Login: React.FC = () => {
   };
 
   return (
-    <div className="bg-surface-dark" style={{ 
-      minHeight: '100vh', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      padding: '24px'
-    }}>
-      <div style={{ width: '100%', maxWidth: '400px' }}>
+    <div className="bg-surface-dark min-h-screen flex items-center justify-center px-4 py-8 sm:px-6">
+      <div className="w-full max-w-md">
         {/* Logo & Header */}
-        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            marginBottom: '24px' 
-          }}>
-            <TrendingUp style={{ width: '48px', height: '48px', color: '#0052ff' }} />
+        <div className="text-center mb-8 sm:mb-12">
+          <div className="flex items-center justify-center mb-5 sm:mb-6">
+            <TrendingUp className="w-11 h-11 sm:w-12 sm:h-12 text-coinbase-blue" />
           </div>
-          <h1 style={{ 
-            fontSize: '52px', 
-            fontWeight: '500', 
-            lineHeight: '1', 
-            letterSpacing: 0,
-            color: '#ffffff',
-            marginBottom: '16px'
-          }} className="font-display">
+          <h1 className="font-display text-[40px] leading-none sm:text-[52px] font-medium text-on-dark mb-3 sm:mb-4">
             收益管家
           </h1>
-          <p style={{ fontSize: '16px', color: '#a8acb3' }}>
+          <p className="text-sm sm:text-base text-on-dark-soft">
             管理资产、查看收益、跟踪实时价格
           </p>
         </div>
 
         {/* Login Card */}
         <div className="card-dark">
-          <h2 style={{ 
-            fontSize: '32px', 
-            fontWeight: '500', 
-            color: '#ffffff',
-            marginBottom: '32px',
-            letterSpacing: 0,
-            lineHeight: '1.13'
-          }} className="font-display">
+          <h2 className="font-display text-[28px] sm:text-[32px] font-medium text-on-dark mb-6 sm:mb-8 leading-tight">
             登录账户
           </h2>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-5 sm:gap-6">
             <div>
-              <label style={{ 
-                display: 'block', 
-                fontSize: '14px', 
-                fontWeight: '500', 
-                color: '#ffffff', 
-                marginBottom: '8px' 
-              }}>
-                用户名
-              </label>
+              <label className="block text-sm font-medium text-on-dark mb-2">用户名</label>
               <input
                 type="text"
                 value={username}
@@ -96,15 +63,7 @@ export const Login: React.FC = () => {
             </div>
 
             <div>
-              <label style={{ 
-                display: 'block', 
-                fontSize: '14px', 
-                fontWeight: '500', 
-                color: '#ffffff', 
-                marginBottom: '8px' 
-              }}>
-                密码
-              </label>
+              <label className="block text-sm font-medium text-on-dark mb-2">密码</label>
               <input
                 type="password"
                 value={password}
@@ -117,27 +76,14 @@ export const Login: React.FC = () => {
             </div>
 
             {error && (
-              <div style={{ 
-                color: '#cf202f', 
-                fontSize: '14px', 
-                fontWeight: '500' 
-              }}>
-                {error}
-              </div>
+              <div className="text-semantic-down text-sm font-medium">{error}</div>
             )}
 
             <button
               type="submit"
               disabled={loading}
               className="btn-primary"
-              style={{ 
-                width: '100%', 
-                height: '48px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px'
-              }}
+              style={{ width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
             >
               {loading ? (
                 <>
@@ -150,8 +96,8 @@ export const Login: React.FC = () => {
             </button>
           </form>
 
-          <div style={{ marginTop: '32px', textAlign: 'center' }}>
-            <p style={{ fontSize: '16px', color: '#a8acb3' }}>
+          <div className="mt-6 sm:mt-8 text-center">
+            <p className="text-sm sm:text-base text-on-dark-soft">
               还没有账户？{' '}
               <Link
                 to="/register"
