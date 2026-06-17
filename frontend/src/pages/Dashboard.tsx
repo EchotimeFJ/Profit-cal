@@ -381,12 +381,15 @@ export const Dashboard: React.FC = () => {
                     style={{
                       height: '36px',
                       padding: '0 14px',
+                      minWidth: '56px',
                       borderRadius: '999px',
                       border: `1px solid ${isActive ? 'var(--color-coinbase-blue)' : 'var(--color-hairline)'}`,
                       backgroundColor: isActive ? 'var(--color-coinbase-blue)' : 'var(--color-surface-soft)',
                       color: isActive ? '#ffffff' : 'var(--color-ink)',
                       fontSize: '14px',
                       fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
                       cursor: 'pointer',
                       transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease',
                     }}
