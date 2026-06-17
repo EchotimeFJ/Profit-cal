@@ -470,8 +470,11 @@ class PriceFetcher:
 
     @staticmethod
     def search_otc_funds(query, *, limit=10):
-        """东方财富/天天基金搜索，支持场外基金代码和名称模糊匹配。"""
+        """东方财富/天天基金搜索，仅支持场外基金 6 位代码查询。"""
         if not query:
+            return []
+        query = query.strip()
+        if not re.fullmatch(r'\d{6}', query):
             return []
 
         try:

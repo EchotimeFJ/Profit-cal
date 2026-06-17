@@ -255,8 +255,6 @@ def search_assets():
         {'symbol': 'ZW=F', 'name': '小麦', 'type': 'commodity', 'currency': 'USD', 'aliases': ['wheat', '小麦']},
         {'symbol': 'ZS=F', 'name': '大豆', 'type': 'commodity', 'currency': 'USD', 'aliases': ['soybean', 'soybeans', '大豆']},
 
-        # 场外基金
-        {'symbol': '000218', 'name': '国泰黄金ETF联接A', 'type': 'otc_fund', 'currency': 'CNY', 'aliases': ['黄金基金', '黄金etf联接', '国泰黄金', '支付宝黄金']},
     ]
 
     def matches(item):
@@ -314,9 +312,6 @@ def search_assets():
             })
 
     for item in PriceFetcher.search_tencent_stocks(query_raw, limit=12):
-        add_search_result(item)
-
-    for item in PriceFetcher.search_otc_funds(query_raw, limit=12):
         add_search_result(item)
 
     if re.fullmatch(r'\d{6}', query_raw) and asset_type in ['', 'a_stock']:
