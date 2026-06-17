@@ -54,8 +54,15 @@ export function getAssetQuantityUnit(type: string): string {
   return units[type] || '份';
 }
 
+export function formatQuantityValue(quantity: number): string {
+  return quantity.toLocaleString('zh-CN', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  });
+}
+
 export function formatAssetQuantity(quantity: number, type: string): string {
-  return `${quantity.toLocaleString('zh-CN')}${getAssetQuantityUnit(type)}`;
+  return `${formatQuantityValue(quantity)}${getAssetQuantityUnit(type)}`;
 }
 
 export function formatNumber(value: number): string {

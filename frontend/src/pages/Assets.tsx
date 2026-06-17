@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Asset, TradeRecord } from '../types';
-import { formatAssetPrice, formatAssetQuantity, formatCurrency, getAssetTypeLabel } from '../lib/utils';
+import { formatAssetPrice, formatAssetQuantity, formatCurrency, formatQuantityValue, getAssetTypeLabel } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SearchResult {
@@ -37,6 +37,29 @@ const assetTypeCurrency: Record<string, string> = {
 };
 
 const getCurrencyForAssetType = (assetType: string) => assetTypeCurrency[assetType] || 'USD';
+
+const CurrencyAmountInput: React.FC<{
+  currency: string;
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+}> = ({ currency, value, placeholder, onChange }) => {
+  return (
+    <div className="relative">
+      <Input
+        type="number"
+        step="0.01"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="pr-20"
+      />
+      <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-body-sm font-medium text-muted">
+        {currency}
+      </span>
+    </div>
+  );
+};
 
 export const Assets: React.FC = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -64,6 +87,7 @@ export const Assets: React.FC = () => {
     quantity: '',
     amount: '',
   });
+  const sellCurrency = sellingAsset?.currency || formData.currency;
 
   const fetchAssets = async () => {
     try {
@@ -155,7 +179,7 @@ export const Assets: React.FC = () => {
       symbol: asset.symbol,
       asset_type: asset.asset_type,
       buy_price: asset.buy_price.toString(),
-      quantity: asset.quantity.toString(),
+      quantity: formatQuantityValue(asset.quantity),
       amount: '',
       currency: asset.currency,
     });
@@ -548,7 +572,7 @@ export const Assets: React.FC = () => {
                     </label>
                     <Input
                       type="number"
-                      step="0.00000001"
+                      step="0.000001"
                       value={formData.quantity}
                       onChange={(e) => setFormData({ ...formData, quantity: e.target.value, amount: '' })}
                       placeholder="数量"
@@ -558,11 +582,10 @@ export const Assets: React.FC = () => {
                     <label className="block text-caption font-medium text-ink mb-2">
                       或金额
                     </label>
-                    <Input
-                      type="number"
-                      step="0.01"
+                    <CurrencyAmountInput
+                      currency={formData.currency}
                       value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value, quantity: '' })}
+                      onChange={(value) => setFormData({ ...formData, amount: value, quantity: '' })}
                       placeholder="总金额"
                     />
                   </div>
@@ -642,7 +665,7 @@ export const Assets: React.FC = () => {
                         className="text-caption font-medium text-coinbase-blue"
                         onClick={() => setSellFormData({
                           ...sellFormData,
-                          quantity: sellingAsset.quantity.toString(),
+                          quantity: formatQuantityValue(sellingAsset.quantity),
                           amount: '',
                         })}
                       >
@@ -651,7 +674,7 @@ export const Assets: React.FC = () => {
                     </div>
                     <Input
                       type="number"
-                      step="0.00000001"
+                      step="0.000001"
                       value={sellFormData.quantity}
                       onChange={(e) => setSellFormData({ ...sellFormData, quantity: e.target.value, amount: '' })}
                       placeholder="数量"
@@ -661,11 +684,10 @@ export const Assets: React.FC = () => {
                     <label className="block text-caption font-medium text-ink mb-2">
                       或金额
                     </label>
-                    <Input
-                      type="number"
-                      step="0.01"
+                    <CurrencyAmountInput
+                      currency={sellCurrency}
                       value={sellFormData.amount}
-                      onChange={(e) => setSellFormData({ ...sellFormData, amount: e.target.value, quantity: '' })}
+                      onChange={(value) => setSellFormData({ ...sellFormData, amount: value, quantity: '' })}
                       placeholder="卖出金额"
                     />
                   </div>
