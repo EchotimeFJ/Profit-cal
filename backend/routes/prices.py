@@ -254,6 +254,9 @@ def search_assets():
         {'symbol': 'ZC=F', 'name': '玉米', 'type': 'commodity', 'currency': 'USD', 'aliases': ['corn', '玉米']},
         {'symbol': 'ZW=F', 'name': '小麦', 'type': 'commodity', 'currency': 'USD', 'aliases': ['wheat', '小麦']},
         {'symbol': 'ZS=F', 'name': '大豆', 'type': 'commodity', 'currency': 'USD', 'aliases': ['soybean', 'soybeans', '大豆']},
+
+        # 场外基金
+        {'symbol': '000218', 'name': '国泰黄金ETF联接A', 'type': 'otc_fund', 'currency': 'CNY', 'aliases': ['黄金基金', '黄金etf联接', '国泰黄金', '支付宝黄金']},
     ]
 
     def matches(item):
@@ -277,8 +280,25 @@ def search_assets():
                 'currency': item['currency'],
             })
 
+    def accepts_type(result_type):
+        return asset_type in ['', result_type]
+
     def has_symbol(symbol):
         return any(item['symbol'].upper() == symbol.upper() for item in results)
+
+    def add_search_result(item, prepend=False):
+        if not accepts_type(item['type']) or has_symbol(item['symbol']):
+            return
+        row = {
+            'symbol': item['symbol'],
+            'name': item['name'],
+            'type': item['type'],
+            'currency': item.get('currency') or currency_for_asset_type(item['type']),
+        }
+        if prepend:
+            results.insert(0, row)
+        else:
+            results.append(row)
 
     def add_live_result(symbol, result_type, display_symbol=None):
         display_symbol = display_symbol or symbol
@@ -293,6 +313,12 @@ def search_assets():
                 'currency': price_data.get('currency') or currency_for_asset_type(result_type),
             })
 
+    for item in PriceFetcher.search_tencent_stocks(query_raw, limit=12):
+        add_search_result(item)
+
+    for item in PriceFetcher.search_otc_funds(query_raw, limit=12):
+        add_search_result(item)
+
     if re.fullmatch(r'\d{6}', query_raw) and asset_type in ['', 'a_stock']:
         code = query_raw
         suffix = None
@@ -304,6 +330,9 @@ def search_assets():
         if suffix:
             symbol = f'{code}.{suffix}'
             add_live_result(symbol, 'a_stock')
+
+    if re.fullmatch(r'\d{6}', query_raw) and accepts_type('otc_fund'):
+        add_live_result(query_raw, 'otc_fund')
 
     hk_match = re.fullmatch(r'(\d{1,5})(?:\.HK)?', query, re.IGNORECASE)
     if hk_match and asset_type in ['', 'hk_stock']:

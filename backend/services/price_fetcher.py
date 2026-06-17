@@ -2,6 +2,8 @@ import requests
 from datetime import datetime, timedelta
 import time
 import os
+import json
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -35,6 +37,13 @@ class PriceFetcher:
             return None
         response.encoding = encoding
         return response.text
+
+    @staticmethod
+    def _request_json(url, *, params=None, timeout=6):
+        response = requests.get(url, params=params, headers=PriceFetcher._headers, timeout=timeout)
+        if response.status_code != 200:
+            return None
+        return response.json()
 
     @staticmethod
     def _extract_quoted_payload(text):
@@ -395,6 +404,178 @@ class PriceFetcher:
             quote_time=quote_time,
             name=fields[13] if len(fields) > 13 else None,
         )
+
+    @staticmethod
+    def search_tencent_stocks(query, *, limit=10):
+        """腾讯智能搜索，支持 A股/港股/美股名称和代码模糊匹配。"""
+        if not query:
+            return []
+
+        try:
+            url = 'https://smartbox.gtimg.cn/s3/'
+            response = requests.get(
+                url,
+                params={'q': query, 't': 'all'},
+                headers=PriceFetcher._headers,
+                timeout=6,
+            )
+            if response.status_code != 200:
+                return []
+            response.encoding = 'utf-8'
+            payload = PriceFetcher._extract_quoted_payload(response.text)
+            if not payload:
+                return []
+            if '\\u' in payload:
+                payload = payload.encode('utf-8').decode('unicode_escape')
+
+            results = []
+            for item in payload.split('^'):
+                fields = item.split('~')
+                if len(fields) < 5:
+                    continue
+
+                market, code, name, _, category = fields[:5]
+                if not category.startswith('GP'):
+                    continue
+
+                market = market.lower()
+                if market in ('sh', 'sz'):
+                    result_type = 'a_stock'
+                    symbol = f"{code}.{'SS' if market == 'sh' else 'SZ'}"
+                    currency = 'CNY'
+                elif market == 'hk':
+                    result_type = 'hk_stock'
+                    symbol = f"{code.zfill(5)}.HK"
+                    currency = 'HKD'
+                elif market == 'us':
+                    result_type = 'us_stock'
+                    symbol = code.split('.')[0].upper()
+                    currency = 'USD'
+                else:
+                    continue
+
+                results.append({
+                    'symbol': symbol,
+                    'name': name,
+                    'type': result_type,
+                    'currency': currency,
+                })
+                if len(results) >= limit:
+                    break
+
+            return results
+        except Exception as e:
+            print(f"腾讯搜索失败 {query}: {e}")
+            return []
+
+    @staticmethod
+    def search_otc_funds(query, *, limit=10):
+        """东方财富/天天基金搜索，支持场外基金代码和名称模糊匹配。"""
+        if not query:
+            return []
+
+        try:
+            url = 'https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx'
+            data = PriceFetcher._request_json(
+                url,
+                params={'m': 1, 'key': query},
+                timeout=8,
+            )
+            if not data or data.get('ErrCode') != 0:
+                return []
+
+            results = []
+            for item in data.get('Datas', []):
+                fund_info = item.get('FundBaseInfo') or {}
+                if item.get('CATEGORYDESC') != '基金' and not fund_info:
+                    continue
+                code = item.get('CODE') or item.get('FCODE')
+                name = item.get('NAME') or item.get('SHORTNAME')
+                if fund_info.get('SHORTNAME'):
+                    name = fund_info['SHORTNAME']
+                if not code or not name:
+                    continue
+
+                results.append({
+                    'symbol': str(code),
+                    'name': name,
+                    'type': 'otc_fund',
+                    'currency': 'CNY',
+                })
+                if len(results) >= limit:
+                    break
+
+            return results
+        except Exception as e:
+            print(f"场外基金搜索失败 {query}: {e}")
+            return []
+
+    @staticmethod
+    def get_otc_fund_price(symbol):
+        """获取场外基金净值/估算净值。优先天天基金盘中估算，失败时用历史单位净值。"""
+        code = symbol.strip().upper()
+        if not re.fullmatch(r'\d{6}', code):
+            return None
+
+        PriceFetcher._rate_limit_check('otc_fund_' + code)
+
+        try:
+            url = f'https://fundgz.1234567.com.cn/js/{code}.js'
+            response = requests.get(
+                url,
+                params={'rt': int(time.time() * 1000)},
+                headers={**PriceFetcher._headers, 'Referer': 'https://fund.eastmoney.com/'},
+                timeout=8,
+            )
+            if response.status_code == 200:
+                response.encoding = 'utf-8'
+                match = re.search(r'jsonpgz\((.*)\);?', response.text)
+                if match:
+                    data = json.loads(match.group(1))
+                    nav = float(data.get('dwjz') or 0)
+                    estimate = float(data.get('gsz') or nav)
+                    current_price = estimate or nav
+                    if current_price:
+                        return PriceFetcher._price_result(
+                            current_price,
+                            nav or current_price,
+                            'CNY',
+                            'eastmoney_fund_estimate',
+                            quote_time=data.get('gztime') or data.get('jzrq'),
+                            name=data.get('name'),
+                        )
+        except Exception as e:
+            print(f"场外基金估值获取失败 {code}: {e}")
+
+        try:
+            url = f'https://fund.eastmoney.com/pingzhongdata/{code}.js'
+            response = requests.get(
+                url,
+                headers={**PriceFetcher._headers, 'Referer': 'https://fund.eastmoney.com/'},
+                timeout=8,
+            )
+            if response.status_code == 200:
+                response.encoding = 'utf-8'
+                text = response.text
+                name_match = re.search(r'var fS_name = "([^"]+)";', text)
+                trend_match = re.search(r'var Data_netWorthTrend = (\[.*?\]);', text)
+                if trend_match:
+                    trend = json.loads(trend_match.group(1))
+                    if trend:
+                        latest = trend[-1]
+                        previous = trend[-2] if len(trend) > 1 else latest
+                        return PriceFetcher._price_result(
+                            latest.get('y'),
+                            previous.get('y'),
+                            'CNY',
+                            'eastmoney_fund_nav',
+                            quote_time=datetime.fromtimestamp(latest.get('x') / 1000).strftime('%Y-%m-%d') if latest.get('x') else None,
+                            name=name_match.group(1) if name_match else code,
+                        )
+        except Exception as e:
+            print(f"场外基金净值获取失败 {code}: {e}")
+
+        return None
     
     @staticmethod
     def get_price(symbol, asset_type):
@@ -409,6 +590,8 @@ class PriceFetcher:
             return PriceFetcher.get_crypto_price(symbol)
         elif asset_type == 'commodity':
             return PriceFetcher.get_commodity_price(symbol)
+        elif asset_type == 'otc_fund':
+            return PriceFetcher.get_otc_fund_price(symbol)
         else:
             return None
     

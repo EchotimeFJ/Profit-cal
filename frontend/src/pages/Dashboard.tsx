@@ -31,6 +31,7 @@ const assetFilters = [
   { value: 'us_stock', label: '美股' },
   { value: 'crypto', label: '加密货币' },
   { value: 'commodity', label: '大宗商品' },
+  { value: 'otc_fund', label: '场外基金' },
 ] as const;
 
 type AssetFilter = typeof assetFilters[number]['value'];

@@ -35,7 +35,7 @@ export const Register: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen hero-dark flex items-center justify-center">
+    <div className="min-h-screen bg-surface-dark flex items-center justify-center py-8">
       <div className="w-full max-w-md px-6">
         {/* Logo & Header */}
         <div className="text-center mb-12">

@@ -33,6 +33,7 @@ const assetTypeCurrency: Record<string, string> = {
   us_stock: 'USD',
   crypto: 'USD',
   commodity: 'USD',
+  otc_fund: 'CNY',
 };
 
 const getCurrencyForAssetType = (assetType: string) => assetTypeCurrency[assetType] || 'USD';
@@ -117,7 +118,7 @@ export const Assets: React.FC = () => {
       asset_type: result.type,
       currency: getCurrencyForAssetType(result.type),
     });
-    setSearchQuery(result.symbol);
+    setSearchQuery(`${result.name}（${result.symbol}）`);
     setSearchResults([]);
   };
 
@@ -508,6 +509,7 @@ export const Assets: React.FC = () => {
                       <option value="hk_stock">港股</option>
                       <option value="crypto">加密货币</option>
                       <option value="commodity">大宗商品</option>
+                      <option value="otc_fund">场外基金</option>
                     </Select>
                   </div>
                   <div>

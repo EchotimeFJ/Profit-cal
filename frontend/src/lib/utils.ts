@@ -37,6 +37,7 @@ export function getAssetTypeLabel(type: string): string {
     us_stock: '美股',
     crypto: '加密货币',
     commodity: '大宗商品',
+    otc_fund: '场外基金',
   };
   return labels[type] || type;
 }
@@ -48,6 +49,7 @@ export function getAssetQuantityUnit(type: string): string {
     us_stock: '股',
     crypto: '个',
     commodity: '份',
+    otc_fund: '份',
   };
   return units[type] || '份';
 }

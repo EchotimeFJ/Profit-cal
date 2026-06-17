@@ -4,6 +4,7 @@ ASSET_TYPE_CURRENCY = {
     'us_stock': 'USD',
     'crypto': 'USD',
     'commodity': 'USD',
+    'otc_fund': 'CNY',
 }
 
 
