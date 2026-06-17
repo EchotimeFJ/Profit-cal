@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, AuthState } from '../types';
 import { api } from '../lib/api';
+import { encryptPassword } from '../lib/passwordCrypto';
 
 interface AuthContextType extends AuthState {
   login: (username: string, password: string) => Promise<void>;
@@ -37,9 +38,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   }, []);
 
   const login = async (username: string, password: string) => {
+    const encryptedPassword = await encryptPassword(password);
     const data = await api.post<{ access_token: string; user: User; message: string }>(
       '/auth/login',
-      { username, password }
+      { username, encrypted_password: encryptedPassword }
     );
     
     api.setToken(data.access_token);
@@ -54,9 +56,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const register = async (username: string, email: string, password: string) => {
+    const encryptedPassword = await encryptPassword(password);
     const data = await api.post<{ access_token: string; user: User; message: string }>(
       '/auth/register',
-      { username, email, password }
+      { username, email, encrypted_password: encryptedPassword }
     );
     
     api.setToken(data.access_token);
