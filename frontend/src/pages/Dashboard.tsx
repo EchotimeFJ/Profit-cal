@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   formatAssetQuantity,
+  formatAssetPrice,
   formatCurrency,
   formatPercent,
 } from '../lib/utils';
@@ -530,7 +531,7 @@ const AssetRow: React.FC<AssetRowProps> = ({ asset }) => {
           {formatAssetQuantity(asset.quantity, asset.asset_type)}
         </p>
         <p style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
-          成本价：{formatCurrency(asset.buy_price, asset.currency)}
+          成本价：{formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}
         </p>
       </div>
 
@@ -544,7 +545,7 @@ const AssetRow: React.FC<AssetRowProps> = ({ asset }) => {
               color: 'var(--color-ink)',
               lineHeight: '1.25'
             }} className="font-number">
-              {formatCurrency(asset.current_price, asset.currency)}
+              {formatAssetPrice(asset.current_price, asset.currency, asset.asset_type)}
             </p>
             <p style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
               市值：{formatCurrency(asset.current_value || 0, asset.currency)}

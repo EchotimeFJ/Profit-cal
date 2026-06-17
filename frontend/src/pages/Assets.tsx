@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { Asset, TradeRecord } from '../types';
-import { formatAssetQuantity, formatCurrency, getAssetTypeLabel } from '../lib/utils';
+import { formatAssetPrice, formatAssetQuantity, formatCurrency, getAssetTypeLabel } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface SearchResult {
@@ -304,7 +304,7 @@ export const Assets: React.FC = () => {
                         </div>
                         <p className="text-body-sm text-muted">{asset.symbol}</p>
                         <p className="text-body-sm text-muted mt-1">
-                          持有 {formatAssetQuantity(asset.quantity, asset.asset_type)} · 买入价 {formatCurrency(asset.buy_price, asset.currency)}
+                          持有 {formatAssetQuantity(asset.quantity, asset.asset_type)} · 买入价 {formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}
                         </p>
                       </div>
                     </div>
@@ -363,7 +363,7 @@ export const Assets: React.FC = () => {
                           {record.symbol} · {getAssetTypeLabel(record.asset_type)} · {new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}
                         </p>
                         <p className="text-body-sm text-muted mt-1">
-                          {formatAssetQuantity(record.quantity, record.asset_type)} · 成交价 {formatCurrency(record.price, record.currency)} · 金额 {formatCurrency(record.amount, record.currency)}
+                          {formatAssetQuantity(record.quantity, record.asset_type)} · 成交价 {formatAssetPrice(record.price, record.currency, record.asset_type)} · 金额 {formatCurrency(record.amount, record.currency)}
                         </p>
                       </div>
                     </div>
@@ -531,7 +531,7 @@ export const Assets: React.FC = () => {
                   </label>
                   <Input
                     type="number"
-                    step="0.01"
+                    step="0.001"
                     value={formData.buy_price}
                     onChange={(e) => setFormData({ ...formData, buy_price: e.target.value })}
                     placeholder="买入价格"
@@ -621,7 +621,7 @@ export const Assets: React.FC = () => {
                   </label>
                   <Input
                     type="number"
-                    step="0.01"
+                    step="0.001"
                     value={sellFormData.sell_price}
                     onChange={(e) => setSellFormData({ ...sellFormData, sell_price: e.target.value })}
                     placeholder="卖出价格"

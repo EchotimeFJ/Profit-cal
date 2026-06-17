@@ -172,9 +172,15 @@ def update_asset(asset_id):
         asset.asset_type = data['asset_type']
         asset.currency = currency_for_asset_type(data['asset_type'])
     if data.get('buy_price'):
-        asset.buy_price = data['buy_price']
+        buy_price = _to_float(data.get('buy_price'))
+        if not buy_price or buy_price <= 0:
+            return jsonify({'error': '买入价必须大于 0'}), 400
+        asset.buy_price = buy_price
     if data.get('quantity'):
-        asset.quantity = data['quantity']
+        quantity = _to_float(data.get('quantity'))
+        if not quantity or quantity <= 0:
+            return jsonify({'error': '数量必须大于 0'}), 400
+        asset.quantity = quantity
     asset.currency = currency_for_asset_type(asset.asset_type)
     
     db.session.commit()

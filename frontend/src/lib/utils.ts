@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(value: number, currency: string = 'CNY'): string {
+export function formatCurrency(value: number, currency: string = 'CNY', fractionDigits = 2): string {
   const currencySymbols: Record<string, string> = {
     CNY: '¥',
     USD: '$',
@@ -16,9 +16,13 @@ export function formatCurrency(value: number, currency: string = 'CNY'): string 
   const symbol = currencySymbols[currency] || currency;
   
   return `${symbol}${value.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
   })}`;
+}
+
+export function formatAssetPrice(value: number, currency: string = 'CNY', assetType?: string): string {
+  return formatCurrency(value, currency, assetType === 'a_stock' ? 3 : 2);
 }
 
 export function formatPercent(value: number): string {
