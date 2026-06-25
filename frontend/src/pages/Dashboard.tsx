@@ -122,6 +122,11 @@ const convertPnlValue = (
   };
 };
 
+const getPositionTypeLabel = (type: string) => {
+  if (type === 'otc_fund') return '基金';
+  return getAssetTypeLabel(type);
+};
+
 export const Dashboard: React.FC = () => {
   const { user, updateUser } = useAuth();
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
@@ -957,8 +962,8 @@ const PositionCard: React.FC<{
 
   return (
     <div className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5 sm:py-5">
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
-        <div className="flex items-center gap-4 xl:w-[280px] min-w-0">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-3">
+        <div className="flex min-w-0 items-center gap-4 xl:w-[240px] xl:shrink-0">
           <div className="h-14 w-14 rounded-full bg-surface-soft flex items-center justify-center shrink-0">
             <span className="text-title-sm font-semibold text-ink">
               {asset.symbol.substring(0, 2).toUpperCase()}
@@ -968,7 +973,7 @@ const PositionCard: React.FC<{
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <h3 className="text-title-sm font-semibold text-ink break-words">{asset.name}</h3>
               <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
-                {getAssetTypeLabel(asset.asset_type)}
+                {getPositionTypeLabel(asset.asset_type)}
               </span>
             </div>
             <p className="text-body-sm text-muted break-all">{asset.symbol}</p>
@@ -976,38 +981,47 @@ const PositionCard: React.FC<{
           </div>
         </div>
 
-        <div className="grid flex-1 grid-cols-1 lg:grid-cols-[1.2fr,0.9fr,0.9fr] gap-4">
-          <div className="rounded-xl bg-surface-soft px-4 py-5 text-center flex flex-col items-center justify-center min-h-[136px]">
-            <p className="text-title-sm font-semibold text-ink">{formatAssetQuantity(asset.quantity, asset.asset_type)}</p>
-            <p className="text-body-sm text-muted mt-1">成本价：{formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}</p>
-            <p className="font-number text-title-md text-ink mt-3">
-              {asset.current_price !== null ? formatAssetPrice(asset.current_price, asset.currency, asset.asset_type) : '--'}
-            </p>
-            <p className="text-body-sm text-muted mt-1">
-              市值：{asset.current_value !== null ? formatCurrency(asset.current_value, asset.currency) : '--'}
-            </p>
-          </div>
+        <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4 xl:min-w-[380px] xl:grid-cols-[0.9fr,1fr,1fr,1.25fr]">
+          <PositionMetric
+            label="仓位"
+            value={formatAssetQuantity(asset.quantity, asset.asset_type)}
+          />
+          <PositionMetric
+            label="成本价"
+            value={formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}
+          />
+          <PositionMetric
+            label="现价"
+            value={asset.current_price !== null ? formatAssetPrice(asset.current_price, asset.currency, asset.asset_type) : '--'}
+            strong
+          />
+          <PositionMetric
+            label="市值"
+            value={asset.current_value !== null ? formatCurrency(asset.current_value, asset.currency) : '--'}
+          />
+        </div>
 
-          <div className="rounded-xl bg-surface-soft px-4 py-5 text-center flex flex-col items-center justify-center min-h-[136px]">
+        <div className="grid gap-3 sm:grid-cols-2 xl:w-[220px] xl:shrink-0">
+          <div className="min-w-0 text-left sm:text-center xl:text-right">
             <p className="text-body-sm text-muted">总收益</p>
-              <p className="font-number text-title-md mt-2" style={{ color: totalProfitColor }}>
+            <p className="font-number text-title-md mt-1" style={{ color: totalProfitColor }}>
               {displayedProfit
                 ? formatCurrency(displayedProfit.value, displayedProfit.currency)
                 : '--'}
-              </p>
-            <p className="font-number text-body-sm mt-2" style={{ color: totalProfitColor }}>
+            </p>
+            <p className="font-number text-body-sm mt-1" style={{ color: totalProfitColor }}>
               {asset.profit_percent !== null && asset.profit_percent !== undefined ? formatPercent(asset.profit_percent) : '--'}
             </p>
           </div>
 
-          <div className="rounded-xl bg-surface-soft px-4 py-5 text-center flex flex-col items-center justify-center min-h-[136px]">
+          <div className="min-w-0 text-left sm:text-center xl:text-right">
             <p className="text-body-sm text-muted">今日收益</p>
-              <p className="font-number text-title-md mt-2" style={{ color: dailyProfitColor }}>
+            <p className="font-number text-title-md mt-1" style={{ color: dailyProfitColor }}>
               {displayedDailyProfit
                 ? formatCurrency(displayedDailyProfit.value, displayedDailyProfit.currency)
                 : '--'}
-              </p>
-            <p className="font-number text-body-sm mt-2" style={{ color: dailyProfitColor }}>
+            </p>
+            <p className="font-number text-body-sm mt-1" style={{ color: dailyProfitColor }}>
               {asset.daily_profit_percent !== null && asset.daily_profit_percent !== undefined
                 ? formatPercent(asset.daily_profit_percent)
                 : '--'}
@@ -1015,8 +1029,8 @@ const PositionCard: React.FC<{
           </div>
         </div>
 
-        <div className="flex xl:flex-col gap-2 xl:w-[108px]">
-          <Button variant="outline" onClick={onSell} className="flex-1 xl:w-full">
+        <div className="flex xl:w-[88px] xl:shrink-0">
+          <Button variant="outline" onClick={onSell} className="flex-1 px-3 xl:w-full">
             <Banknote className="w-4 h-4 mr-1" />
             卖出
           </Button>
@@ -1025,3 +1039,19 @@ const PositionCard: React.FC<{
     </div>
   );
 };
+
+const PositionMetric: React.FC<{
+  label: string;
+  value: string;
+  strong?: boolean;
+}> = ({ label, value, strong = false }) => (
+  <div className="min-w-0">
+    <p className="text-body-sm text-muted">{label}</p>
+    <p
+      className={`mt-1 whitespace-nowrap ${strong ? 'font-number text-title-sm font-semibold text-ink' : 'text-body-sm text-ink'}`}
+      title={value}
+    >
+      {value}
+    </p>
+  </div>
+);
