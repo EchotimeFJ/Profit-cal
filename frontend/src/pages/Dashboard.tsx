@@ -1,22 +1,32 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
 import {
-  formatAssetQuantity,
   formatAssetPrice,
+  formatAssetQuantity,
   formatCurrency,
   formatPercent,
+  getAssetTypeLabel,
+  formatQuantityValue,
 } from '../lib/utils';
-import { api } from '../lib/api';
-import { PortfolioData, PortfolioAsset } from '../types';
+import { PortfolioData, PortfolioAsset, TradeRecord } from '../types';
+import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
 import {
   RefreshCw,
   Plus,
-  AlertTriangle,
   Loader2,
   Wallet,
+  ArrowUpDown,
+  Banknote,
+  History,
+  X,
+  BellRing,
+  ChevronDown,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
 
 const settlementCurrencies = [
   { value: 'CNY', label: '人民币 CNY' },
@@ -27,76 +37,232 @@ const settlementCurrencies = [
 const assetFilters = [
   { value: 'all', label: '全部' },
   { value: 'a_stock', label: 'A股' },
+  { value: 'otc_fund', label: '场外基金' },
   { value: 'hk_stock', label: '港股' },
   { value: 'us_stock', label: '美股' },
   { value: 'crypto', label: '加密货币' },
   { value: 'commodity', label: '大宗商品' },
-  { value: 'otc_fund', label: '场外基金' },
+] as const;
+
+const sortOptions = [
+  { value: 'current_value', label: '按总金额大小' },
+  { value: 'profit', label: '按总收益' },
+  { value: 'daily_profit_percent', label: '按今日收益率' },
+  { value: 'profit_percent', label: '按总收益率' },
+  { value: 'asset_type', label: '按类型' },
+] as const;
+
+const pnlDisplayOptions = [
+  { value: 'CNY', label: '人民币' },
+  { value: 'USD', label: '美元' },
+  { value: 'ORIGINAL', label: '原始币种' },
 ] as const;
 
 type AssetFilter = typeof assetFilters[number]['value'];
+type SortMode = typeof sortOptions[number]['value'];
+type PnlDisplayMode = typeof pnlDisplayOptions[number]['value'];
+type DashboardTab = 'positions' | 'history';
+
+const notificationUsesBrowser = (method: string) => ['browser', 'popup', 'both'].includes(method);
+const notificationUsesSound = (method: string) => ['sound', 'vibrate', 'both'].includes(method);
+
+const playAlertSound = () => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
+
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.45);
+  } catch (error) {
+    console.error('播放提醒声音失败:', error);
+  }
+};
+
+const formatUpdatedAt = (value?: string) => {
+  if (!value) return '--';
+  const normalizedValue = /(?:Z|[+-]\d{2}:?\d{2})$/.test(value) ? value : `${value}Z`;
+  const date = new Date(normalizedValue);
+  if (Number.isNaN(date.getTime())) return '--';
+  return date.toLocaleString('zh-CN', {
+    hour12: false,
+    timeZone: 'Asia/Shanghai',
+  });
+};
+
+const convertPnlValue = (
+  value: number | null | undefined,
+  sourceCurrency: string | undefined,
+  mode: PnlDisplayMode,
+  rates?: Record<string, Record<string, number>>
+) => {
+  if (value === null || value === undefined || !sourceCurrency) {
+    return null;
+  }
+  if (mode === 'ORIGINAL') {
+    return { value, currency: sourceCurrency };
+  }
+  const rate = rates?.[sourceCurrency]?.[mode];
+  if (rate === undefined || rate === null) {
+    return { value, currency: sourceCurrency };
+  }
+  return {
+    value: value * rate,
+    currency: mode,
+  };
+};
 
 export const Dashboard: React.FC = () => {
+  const { user, updateUser } = useAuth();
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
+  const [records, setRecords] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [triggeredAlerts, setTriggeredAlerts] = useState<any[]>([]);
-  const { user, updateUser } = useAuth();
   const [settlementCurrency, setSettlementCurrency] = useState(user?.preferred_currency || 'CNY');
   const [assetFilter, setAssetFilter] = useState<AssetFilter>('all');
+  const [sortMode, setSortMode] = useState<SortMode>('current_value');
+  const [pnlDisplayMode, setPnlDisplayMode] = useState<PnlDisplayMode>('ORIGINAL');
+  const [activeTab, setActiveTab] = useState<DashboardTab>('positions');
+  const [sellingAsset, setSellingAsset] = useState<PortfolioAsset | null>(null);
+  const [sellFormData, setSellFormData] = useState({
+    sell_price: '',
+    quantity: '',
+    amount: '',
+  });
 
-  const fetchPortfolio = useCallback(async () => {
+  const sellCurrency = sellingAsset?.currency || 'CNY';
+  const preferencePrefix = user?.id ? `profit-cal:${user.id}:dashboard:` : 'profit-cal:dashboard:';
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const savedSortMode = localStorage.getItem(`${preferencePrefix}sort-mode`) as SortMode | null;
+    const savedPnlDisplayMode = localStorage.getItem(`${preferencePrefix}pnl-display-mode`) as PnlDisplayMode | null;
+    const savedAssetFilter = localStorage.getItem(`${preferencePrefix}asset-filter`) as AssetFilter | null;
+    if (savedSortMode && sortOptions.some((option) => option.value === savedSortMode)) {
+      setSortMode(savedSortMode);
+    }
+    if (savedPnlDisplayMode && pnlDisplayOptions.some((option) => option.value === savedPnlDisplayMode)) {
+      setPnlDisplayMode(savedPnlDisplayMode);
+    }
+    if (savedAssetFilter && assetFilters.some((option) => option.value === savedAssetFilter)) {
+      setAssetFilter(savedAssetFilter);
+    }
+  }, [preferencePrefix, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(`${preferencePrefix}sort-mode`, sortMode);
+    localStorage.setItem(`${preferencePrefix}pnl-display-mode`, pnlDisplayMode);
+    localStorage.setItem(`${preferencePrefix}asset-filter`, assetFilter);
+  }, [assetFilter, preferencePrefix, pnlDisplayMode, sortMode, user?.id]);
+
+  const fetchHistory = useCallback(async () => {
+    const data = await api.get<{ records: TradeRecord[] }>('/assets/history');
+    setRecords(data.records);
+  }, []);
+
+  const fetchPortfolio = useCallback(async (options?: { refresh?: boolean; silent?: boolean }) => {
+    const params = new URLSearchParams({
+      currency: settlementCurrency,
+    });
+    if (options?.refresh) {
+      params.set('refresh', '1');
+    }
+
+    if (options?.refresh && !options?.silent) {
+      setRefreshing(true);
+    }
+
     try {
-      const data = await api.get<PortfolioData>(`/prices/portfolio?currency=${settlementCurrency}`);
+      const data = await api.get<PortfolioData>(`/prices/portfolio?${params.toString()}`);
       setPortfolioData(data);
     } catch (error) {
       console.error('获取组合数据失败:', error);
+    } finally {
+      setLoading(false);
+      if (options?.refresh && !options?.silent) {
+        setRefreshing(false);
+      }
     }
   }, [settlementCurrency]);
+
+  const pushBrowserNotification = useCallback((alert: any) => {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const title = `${alert.name} 提醒触发`;
+    const body = `${alert.symbol} 当前价格 ${formatCurrency(alert.current_price, alert.currency)}，目标 ${formatCurrency(alert.target_price, alert.currency)}`;
+    new Notification(title, { body, tag: alert.id });
+  }, []);
 
   const checkAlerts = useCallback(async () => {
     try {
       const data = await api.get<{ triggered_alerts: any[] }>('/prices/check-alerts');
       if (data.triggered_alerts.length > 0) {
-        setTriggeredAlerts(prev => [...prev, ...data.triggered_alerts]);
+        setTriggeredAlerts((prev) => [...data.triggered_alerts, ...prev]);
+        data.triggered_alerts.forEach((alert) => {
+          if (notificationUsesBrowser(alert.notification_method)) {
+            pushBrowserNotification(alert);
+          }
+          if (notificationUsesSound(alert.notification_method)) {
+            playAlertSound();
+          }
+        });
         try {
           if (navigator.vibrate) {
-            navigator.vibrate([200, 100, 200]);
+            navigator.vibrate([220, 120, 220]);
           }
         } catch {}
       }
     } catch (error) {
       console.error('检查价格提醒失败:', error);
     }
-  }, []);
-
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([fetchPortfolio(), checkAlerts()]);
-    setRefreshing(false);
-  };
+  }, [pushBrowserNotification]);
 
   useEffect(() => {
-    fetchPortfolio();
-    checkAlerts();
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => undefined);
+    }
+  }, []);
 
+  useEffect(() => {
+    let disposed = false;
+
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([fetchPortfolio(), fetchHistory()]);
+      if (!disposed) {
+        fetchPortfolio({ refresh: true, silent: true });
+        checkAlerts();
+      }
+    };
+
+    loadData();
     const interval = setInterval(() => {
-      fetchPortfolio();
+      fetchPortfolio({ refresh: true, silent: true });
       checkAlerts();
     }, 30000);
 
-    return () => clearInterval(interval);
-  }, [fetchPortfolio, checkAlerts]);
-
-  useEffect(() => {
-    setLoading(false);
-  }, [portfolioData]);
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+    };
+  }, [checkAlerts, fetchHistory, fetchPortfolio]);
 
   useEffect(() => {
     if (user?.preferred_currency && user.preferred_currency !== settlementCurrency) {
       setSettlementCurrency(user.preferred_currency);
     }
-  }, [user?.preferred_currency]);
+  }, [settlementCurrency, user?.preferred_currency]);
 
   const handleSettlementCurrencyChange = async (currency: string) => {
     setSettlementCurrency(currency);
@@ -107,113 +273,183 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        minHeight: '400px' 
-      }}>
-        <Loader2 style={{ width: '32px', height: '32px', animation: 'spin 1s linear infinite', color: 'var(--color-coinbase-blue)' }} />
-      </div>
-    );
-  }
+  const handleRefresh = async () => {
+    await Promise.all([
+      fetchPortfolio({ refresh: true }),
+      fetchHistory(),
+      checkAlerts(),
+    ]);
+  };
+
+  const handleSellSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sellingAsset) return;
+
+    try {
+      await api.post(`/assets/${sellingAsset.id}/sell`, {
+        sell_price: parseFloat(sellFormData.sell_price),
+        quantity: sellFormData.quantity ? parseFloat(sellFormData.quantity) : undefined,
+        amount: sellFormData.amount ? parseFloat(sellFormData.amount) : undefined,
+      });
+      setSellingAsset(null);
+      setSellFormData({ sell_price: '', quantity: '', amount: '' });
+      setActiveTab('history');
+      await Promise.all([
+        fetchPortfolio({ refresh: true }),
+        fetchHistory(),
+      ]);
+    } catch (error: any) {
+      alert(error.message || '卖出失败');
+    }
+  };
 
   const summary = portfolioData?.summary;
   const summaries = portfolioData?.summary_by_currency && Object.keys(portfolioData.summary_by_currency).length > 0
     ? Object.values(portfolioData.summary_by_currency)
     : [];
-  const portfolio = portfolioData?.portfolio || [];
-  const filteredPortfolio = assetFilter === 'all'
-    ? portfolio
-    : portfolio.filter((asset) => asset.asset_type === assetFilter);
+
+  const filteredPortfolio = useMemo(() => {
+    const source = portfolioData?.portfolio || [];
+    const filtered = assetFilter === 'all'
+      ? source
+      : source.filter((asset) => asset.asset_type === assetFilter);
+
+    const clone = [...filtered];
+    clone.sort((a, b) => {
+      if (sortMode === 'asset_type') {
+        return (a.type_sort_order ?? 999) - (b.type_sort_order ?? 999);
+      }
+
+      const left = sortMode === 'current_value'
+        ? a.sort_current_value_base ?? Number.NEGATIVE_INFINITY
+        : sortMode === 'profit'
+          ? a.sort_profit_base ?? Number.NEGATIVE_INFINITY
+          : sortMode === 'daily_profit_percent'
+            ? a.daily_profit_percent ?? Number.NEGATIVE_INFINITY
+            : a.profit_percent ?? Number.NEGATIVE_INFINITY;
+
+      const right = sortMode === 'current_value'
+        ? b.sort_current_value_base ?? Number.NEGATIVE_INFINITY
+        : sortMode === 'profit'
+          ? b.sort_profit_base ?? Number.NEGATIVE_INFINITY
+          : sortMode === 'daily_profit_percent'
+            ? b.daily_profit_percent ?? Number.NEGATIVE_INFINITY
+            : b.profit_percent ?? Number.NEGATIVE_INFINITY;
+
+      return right - left;
+    });
+    return clone;
+  }, [assetFilter, portfolioData?.portfolio, sortMode]);
+
+  const displayedSummary = useMemo(() => {
+    if (!summary) return null;
+    if (pnlDisplayMode === 'ORIGINAL' || !portfolioData?.summary_by_currency) {
+      return {
+        totalProfit: summary.total_profit,
+        dailyProfit: summary.daily_profit,
+        currency: summary.currency,
+      };
+    }
+
+    let totalProfit = 0;
+    let dailyProfit = 0;
+    Object.values(portfolioData.summary_by_currency).forEach((item) => {
+      const rate = portfolioData.pnl_exchange_rates?.[item.currency]?.[pnlDisplayMode] ?? 1;
+      totalProfit += item.total_profit * rate;
+      dailyProfit += item.daily_profit * rate;
+    });
+
+    return {
+      totalProfit,
+      dailyProfit,
+      currency: pnlDisplayMode,
+    };
+  }, [pnlDisplayMode, portfolioData?.pnl_exchange_rates, portfolioData?.summary_by_currency, summary]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 animate-spin text-coinbase-blue" />
+      </div>
+    );
+  }
 
   return (
-    <div style={{ 
-      maxWidth: '1200px', 
-      margin: '0 auto', 
+    <div style={{
+      maxWidth: '1260px',
+      margin: '0 auto',
       padding: '20px 16px 24px',
       backgroundColor: 'var(--color-canvas)'
     }}>
-      {/* Header */}
       <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between" style={{ marginBottom: '32px' }}>
         <div>
-          <h1 style={{ 
-            fontSize: 'clamp(30px, 8vw, 36px)', 
-            fontWeight: '600', 
-            lineHeight: '1.11', 
+          <h1 style={{
+            fontSize: 'clamp(30px, 8vw, 36px)',
+            fontWeight: '600',
+            lineHeight: '1.11',
             letterSpacing: 0,
             color: 'var(--color-ink)',
             marginBottom: '8px'
           }}>
             资产总览
           </h1>
-          <p style={{ 
-            fontSize: '16px', 
-            color: 'var(--color-muted)' 
-          }}>
+          <p style={{ fontSize: '16px', color: 'var(--color-muted)' }}>
             欢迎回来，{user?.username}
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-          <label className="flex items-center justify-between gap-3 text-sm text-muted">
-            结算货币
-            <select
-              value={settlementCurrency}
-              onChange={(e) => handleSettlementCurrencyChange(e.target.value)}
-              style={{
-                height: '40px',
-                minWidth: '136px',
-                border: '1px solid var(--color-hairline)',
-                borderRadius: '8px',
-                padding: '0 12px',
-                color: 'var(--color-ink)',
-                backgroundColor: 'var(--color-canvas)',
-                fontSize: '14px',
-                outline: 'none',
-              }}
-            >
-              {settlementCurrencies.map((item) => (
-                <option key={item.value} value={item.value}>{item.label}</option>
-              ))}
-            </select>
+          <label className="flex items-center justify-between gap-3 text-sm font-medium text-muted">
+            <span>结算货币</span>
+            <div className="relative min-w-[150px]">
+              <Select
+                value={settlementCurrency}
+                onChange={(e) => handleSettlementCurrencyChange(e.target.value)}
+                className="h-10 cursor-pointer appearance-none rounded-xl bg-canvas py-0 pl-3 pr-9 text-sm font-semibold shadow-none"
+              >
+                {settlementCurrencies.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </Select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            </div>
           </label>
-          <button 
-            onClick={handleRefresh} 
+          <div className="text-sm text-muted text-left sm:text-right">
+            <div>更新于 {formatUpdatedAt(portfolioData?.updated_at)}</div>
+          </div>
+          <button
+            onClick={handleRefresh}
             disabled={refreshing}
             className="btn-secondary"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
-            <RefreshCw 
-              style={{ 
-                width: '16px', 
+            <RefreshCw
+              style={{
+                width: '16px',
                 height: '16px',
                 animation: refreshing ? 'spin 1s linear infinite' : 'none'
-              }} 
+              }}
             />
             刷新
           </button>
         </div>
       </div>
 
-      {/* Alerts */}
       {triggeredAlerts.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="card-light"
-          style={{ 
+          style={{
             marginBottom: '32px',
-            borderLeft: '4px solid var(--color-accent-yellow)' 
+            borderLeft: '4px solid var(--color-accent-yellow)'
           }}
         >
           <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
-            <AlertTriangle style={{ width: '24px', height: '24px', color: 'var(--color-accent-yellow)', flexShrink: 0, marginTop: '2px' }} />
+            <BellRing style={{ width: '24px', height: '24px', color: 'var(--color-accent-yellow)', flexShrink: 0, marginTop: '2px' }} />
             <div style={{ flex: 1 }}>
-              <h3 style={{ 
-                fontSize: '18px', 
-                fontWeight: '600', 
+              <h3 style={{
+                fontSize: '18px',
+                fontWeight: '600',
                 color: 'var(--color-ink)',
                 marginBottom: '16px'
               }}>
@@ -221,20 +457,26 @@ export const Dashboard: React.FC = () => {
               </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {triggeredAlerts.map((alert, index) => (
-                  <div key={index} style={{ 
-                    backgroundColor: 'var(--color-surface-soft)', 
-                    padding: '16px', 
-                    borderRadius: '12px' 
-                  }}>
+                  <div
+                    key={`${alert.id}-${index}`}
+                    style={{
+                      backgroundColor: 'var(--color-surface-soft)',
+                      padding: '16px',
+                      borderRadius: '12px'
+                    }}
+                  >
                     <p style={{ fontSize: '16px', color: 'var(--color-ink)' }}>
-                      <span style={{ fontWeight: '600' }}>{alert.asset.name}</span>
-                      {' '}价格已{alert.alert_type === 'above' ? '高于' : '低于'}目标价{' '}
-                      {formatCurrency(alert.target_price, alert.asset.currency)}
+                      <span style={{ fontWeight: '600' }}>{alert.name}</span>
+                      {' '}({alert.symbol}) 价格已{alert.alert_type === 'above' ? '高于' : '低于'}目标价{' '}
+                      {formatCurrency(alert.target_price, alert.currency)}
+                    </p>
+                    <p style={{ fontSize: '14px', color: 'var(--color-muted)', marginTop: '6px' }}>
+                      当前价格：{formatCurrency(alert.current_price, alert.currency)} · {getAssetTypeLabel(alert.asset_type)}
                     </p>
                     <button
                       className="btn-text"
                       style={{ marginTop: '8px', fontSize: '14px' }}
-                      onClick={() => setTriggeredAlerts(prev => prev.filter((_, i) => i !== index))}
+                      onClick={() => setTriggeredAlerts((prev) => prev.filter((_, i) => i !== index))}
                     >
                       知道了
                     </button>
@@ -246,11 +488,10 @@ export const Dashboard: React.FC = () => {
         </motion.div>
       )}
 
-      {/* Summary Stats */}
       {summary && (
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', 
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
           gap: '16px',
           marginBottom: '32px'
         }}>
@@ -292,13 +533,13 @@ export const Dashboard: React.FC = () => {
               <div>
                 <p style={{ fontSize: '12px', color: 'var(--color-muted)', marginBottom: '6px' }}>总收益</p>
                 <p className="font-number" style={{ fontSize: '22px', fontWeight: 600, color: summary.total_profit >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)' }}>
-                  {formatCurrency(summary.total_profit, summary.currency)} · {formatPercent(summary.total_profit_percent)}
+                  {displayedSummary ? formatCurrency(displayedSummary.totalProfit, displayedSummary.currency) : formatCurrency(summary.total_profit, summary.currency)} · {formatPercent(summary.total_profit_percent)}
                 </p>
               </div>
               <div>
                 <p style={{ fontSize: '12px', color: 'var(--color-muted)', marginBottom: '6px' }}>今日总收益</p>
                 <p className="font-number" style={{ fontSize: '22px', fontWeight: 600, color: summary.daily_profit >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)' }}>
-                  {formatCurrency(summary.daily_profit, summary.currency)}
+                  {displayedSummary ? formatCurrency(displayedSummary.dailyProfit, displayedSummary.currency) : formatCurrency(summary.daily_profit, summary.currency)}
                 </p>
               </div>
             </div>
@@ -351,219 +592,434 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Portfolio List */}
-      <div>
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between" style={{ marginBottom: '24px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <h2 style={{
-              fontSize: '18px',
-              fontWeight: '600',
-              color: 'var(--color-ink)',
-              lineHeight: '1.33'
-            }}>
-              持仓资产
-            </h2>
-            <div
-              role="tablist"
-              aria-label="持仓资产类型筛选"
-              className="flex items-center gap-2 overflow-x-auto pb-1"
-            >
-              {assetFilters.map((filter) => {
-                const isActive = assetFilter === filter.value;
-
-                return (
-                  <button
-                    key={filter.value}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    onClick={() => setAssetFilter(filter.value)}
-                    style={{
-                      height: '36px',
-                      padding: '0 14px',
-                      minWidth: '56px',
-                      borderRadius: '999px',
-                      border: `1px solid ${isActive ? 'var(--color-coinbase-blue)' : 'var(--color-hairline)'}`,
-                      backgroundColor: isActive ? 'var(--color-coinbase-blue)' : 'var(--color-surface-soft)',
-                      color: isActive ? '#ffffff' : 'var(--color-ink)',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                      cursor: 'pointer',
-                      transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease',
-                    }}
-                  >
-                    {filter.label}
-                  </button>
-                );
-              })}
+      <div className="card-light" style={{ padding: '24px' }}>
+        <div className="flex flex-col gap-4 border-b border-hairline pb-5 mb-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2 border-b border-hairline overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('positions')}
+                  className={`px-4 py-3 text-nav-link border-b-2 transition-colors ${
+                    activeTab === 'positions'
+                      ? 'border-coinbase-blue text-ink'
+                      : 'border-transparent text-muted hover:text-ink'
+                  }`}
+                >
+                  持仓资产
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('history')}
+                  className={`px-4 py-3 text-nav-link border-b-2 transition-colors ${
+                    activeTab === 'history'
+                      ? 'border-coinbase-blue text-ink'
+                      : 'border-transparent text-muted hover:text-ink'
+                  }`}
+                >
+                  历史记录
+                </button>
+              </div>
+              {activeTab === 'positions' && (
+                <div
+                  role="tablist"
+                  aria-label="持仓资产类型筛选"
+                  className="flex items-center gap-2 overflow-x-auto pb-1"
+                >
+                  {assetFilters.map((filter) => {
+                    const isActive = assetFilter === filter.value;
+                    return (
+                      <button
+                        key={filter.value}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => setAssetFilter(filter.value)}
+                        style={{
+                          height: '40px',
+                          padding: '0 18px',
+                          minWidth: '56px',
+                          borderRadius: '999px',
+                          border: `1px solid ${isActive ? 'var(--color-coinbase-blue)' : 'var(--color-hairline)'}`,
+                          backgroundColor: isActive ? 'var(--color-coinbase-blue)' : 'var(--color-canvas)',
+                          color: isActive ? '#ffffff' : 'var(--color-ink)',
+                          fontSize: '14px',
+                          fontWeight: 600,
+                          whiteSpace: 'nowrap',
+                          flexShrink: 0,
+                          cursor: 'pointer',
+                          transition: 'background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease',
+                        }}
+                      >
+                        {filter.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+
+            {activeTab === 'positions' && (
+              <div className="flex w-full flex-col gap-3 xl:w-[560px]">
+                <Link to="/assets" className="w-full sm:w-auto xl:self-end">
+                  <button className="btn-primary w-full xl:w-auto" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <Plus style={{ width: '16px', height: '16px' }} />
+                    添加资产
+                  </button>
+                </Link>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DashboardSelect
+                    label="排序方式"
+                    icon={<ArrowUpDown className="h-4 w-4" />}
+                    value={sortMode}
+                    options={sortOptions}
+                    onChange={setSortMode}
+                  />
+                  <DashboardSelect
+                    label="盈亏显示"
+                    icon={<Wallet className="h-4 w-4" />}
+                    value={pnlDisplayMode}
+                    options={pnlDisplayOptions}
+                    onChange={setPnlDisplayMode}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-          <Link to="/assets" className="w-full md:w-auto">
-            <button className="btn-primary w-full md:w-auto" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-              <Plus style={{ width: '16px', height: '16px' }} />
-              添加资产
-            </button>
-          </Link>
         </div>
 
-        {portfolio.length === 0 ? (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '48px 24px', 
-            backgroundColor: 'var(--color-surface-soft)', 
-            borderRadius: '24px' 
-          }}>
-            <Wallet style={{ 
-              width: '48px', 
-              height: '48px', 
-              color: 'var(--color-muted)', 
-              margin: '0 auto 16px' 
-            }} />
-            <p style={{ fontSize: '16px', color: 'var(--color-muted)', marginBottom: '24px' }}>
-              还没有添加资产
-            </p>
-            <Link to="/assets">
-              <button className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-                <Plus style={{ width: '16px', height: '16px' }} />
-                添加第一项资产
-              </button>
-            </Link>
-          </div>
-        ) : filteredPortfolio.length === 0 ? (
-          <div style={{
-            textAlign: 'center',
-            padding: '44px 24px',
-            backgroundColor: 'var(--color-surface-soft)',
-            border: '1px solid var(--color-hairline)',
-            borderRadius: '24px'
-          }}>
-            <Wallet style={{
-              width: '44px',
-              height: '44px',
-              color: 'var(--color-muted)',
-              margin: '0 auto 16px'
-            }} />
-            <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
-              当前筛选下没有持仓
-            </p>
-            <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
-              可以切换到“全部”，或添加对应类型的资产。
-            </p>
-          </div>
+        {activeTab === 'positions' ? (
+          filteredPortfolio.length === 0 ? (
+            <div style={{
+              textAlign: 'center',
+              padding: '44px 24px',
+              backgroundColor: 'var(--color-surface-soft)',
+              border: '1px solid var(--color-hairline)',
+              borderRadius: '24px'
+            }}>
+              <Wallet style={{
+                width: '44px',
+                height: '44px',
+                color: 'var(--color-muted)',
+                margin: '0 auto 16px'
+              }} />
+              <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
+                当前筛选下没有持仓
+              </p>
+              <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
+                可以切换筛选、调整排序，或继续添加资产。
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {filteredPortfolio.map((asset, index) => (
+                <motion.div
+                  key={asset.id}
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.04 }}
+                >
+                  <PositionCard
+                    asset={asset}
+                    pnlDisplayMode={pnlDisplayMode}
+                    pnlExchangeRates={portfolioData?.pnl_exchange_rates}
+                    onSell={() => {
+                      setSellingAsset(asset);
+                      setSellFormData({ sell_price: '', quantity: '', amount: '' });
+                    }}
+                  />
+                </motion.div>
+              ))}
+            </div>
+          )
         ) : (
-          <div style={{ 
-            backgroundColor: 'var(--color-canvas)', 
-            border: '1px solid var(--color-hairline)', 
-            borderRadius: '24px', 
-            overflow: 'hidden' 
-          }}>
-            {filteredPortfolio.map((asset, index) => (
-              <motion.div
-                key={asset.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 + index * 0.05 }}
-                className="asset-row"
-                style={{ padding: '16px' }}
-                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-surface-soft)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--color-canvas)'; }}
-              >
-                <AssetRow asset={asset} />
-              </motion.div>
-            ))}
-          </div>
+          records.length === 0 ? (
+            <div style={{
+              textAlign: 'center',
+              padding: '44px 24px',
+              backgroundColor: 'var(--color-surface-soft)',
+              border: '1px solid var(--color-hairline)',
+              borderRadius: '24px'
+            }}>
+              <History style={{
+                width: '44px',
+                height: '44px',
+                color: 'var(--color-muted)',
+                margin: '0 auto 16px'
+              }} />
+              <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
+                还没有交易记录
+              </p>
+              <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
+                买入、卖出和清仓都会在这里保留历史。
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {records.map((record) => (
+                <div
+                  key={record.id}
+                  className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
+                        <span className="text-title-sm font-semibold text-ink">{record.asset_name}</span>
+                        <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                          {record.action === 'buy' ? '买入' : '卖出'}
+                        </span>
+                        <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                          {getAssetTypeLabel(record.asset_type)}
+                        </span>
+                      </div>
+                      <p className="text-body-sm text-muted break-all">
+                        {record.symbol} · {new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}
+                      </p>
+                      <p className="text-body-sm text-muted mt-2">
+                        {formatAssetQuantity(record.quantity, record.asset_type)} · 成交价 {formatAssetPrice(record.price, record.currency, record.asset_type)} · 金额 {formatCurrency(record.amount, record.currency)}
+                      </p>
+                    </div>
+                    {record.action === 'sell' && (
+                      <div className="text-left sm:text-right">
+                        <p className={`font-number text-title-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
+                          {formatCurrency(record.realized_profit || 0, record.currency)}
+                        </p>
+                        <p className={`font-number text-body-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
+                          {record.realized_profit_percent !== null ? `${record.realized_profit_percent >= 0 ? '+' : ''}${record.realized_profit_percent.toFixed(2)}%` : '--'}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
         )}
       </div>
+
+      <AnimatePresence>
+        {sellingAsset && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-0">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setSellingAsset(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: '100%', scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: '100%', scale: 0.95 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative w-full sm:max-w-lg bg-canvas rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
+                <div>
+                  <h2 className="text-title-md font-semibold text-ink">卖出资产</h2>
+                  <p className="text-body-sm text-muted mt-1">
+                    {sellingAsset.name} · 当前持有 {formatAssetQuantity(sellingAsset.quantity, sellingAsset.asset_type)}
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setSellingAsset(null)}>
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+
+              <form onSubmit={handleSellSubmit} className="px-6 py-6 space-y-5">
+                <div>
+                  <label className="block text-caption font-medium text-ink mb-2">卖出价</label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={sellFormData.sell_price}
+                    onChange={(e) => setSellFormData({ ...sellFormData, sell_price: e.target.value })}
+                    placeholder="卖出价格"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-caption font-medium text-ink">数量</label>
+                      <button
+                        type="button"
+                        className="text-caption font-medium text-coinbase-blue"
+                        onClick={() => setSellFormData({
+                          ...sellFormData,
+                          quantity: formatQuantityValue(sellingAsset.quantity),
+                          amount: '',
+                        })}
+                      >
+                        全部卖出
+                      </button>
+                    </div>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={sellFormData.quantity}
+                      onChange={(e) => setSellFormData({ ...sellFormData, quantity: e.target.value, amount: '' })}
+                      placeholder="数量"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-caption font-medium text-ink mb-2">或金额</label>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={sellFormData.amount}
+                        onChange={(e) => setSellFormData({ ...sellFormData, amount: e.target.value, quantity: '' })}
+                        placeholder="卖出金额"
+                        className="pr-20"
+                      />
+                      <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-body-sm font-medium text-muted">
+                        {sellCurrency}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-surface-soft px-4 py-3 text-body-sm text-muted">
+                  如果卖出数量等于当前持仓，主页会直接移除该类目，但历史记录会完整保留。
+                </div>
+
+                <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+                  <Button type="submit" className="flex-1">
+                    确认卖出
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setSellingAsset(null)}>
+                    取消
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
 
-interface AssetRowProps {
-  asset: PortfolioAsset;
+type DashboardSelectOption<T extends string> = {
+  value: T;
+  label: string;
+};
+
+function DashboardSelect<T extends string>({
+  label,
+  icon,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  value: T;
+  options: readonly DashboardSelectOption<T>[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <label className="group block rounded-2xl border border-hairline bg-surface-soft p-3 transition-colors">
+      <span className="mb-2 flex items-center gap-2 text-caption font-medium text-muted">
+        {icon}
+        {label}
+      </span>
+      <div className="relative">
+        <Select
+          value={value}
+          onChange={(event) => onChange(event.target.value as T)}
+          className="h-12 cursor-pointer appearance-none rounded-xl bg-canvas py-0 pl-4 pr-11 text-body-sm font-semibold shadow-none"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted transition-colors group-focus-within:text-coinbase-blue" />
+      </div>
+    </label>
+  );
 }
 
-const AssetRow: React.FC<AssetRowProps> = ({ asset }) => {
-  const profitColor = asset.profit && asset.profit >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
-  const dailyProfitColor = asset.daily_profit && asset.daily_profit >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
+const PositionCard: React.FC<{
+  asset: PortfolioAsset;
+  pnlDisplayMode: PnlDisplayMode;
+  pnlExchangeRates?: Record<string, Record<string, number>>;
+  onSell: () => void;
+}> = ({ asset, pnlDisplayMode, pnlExchangeRates, onSell }) => {
+  const displayedProfit = convertPnlValue(asset.profit, asset.currency, pnlDisplayMode, pnlExchangeRates);
+  const displayedDailyProfit = convertPnlValue(asset.daily_profit, asset.currency, pnlDisplayMode, pnlExchangeRates);
+  const totalProfitColor = ((displayedProfit?.value ?? 0) >= 0) ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
+  const dailyProfitColor = ((displayedDailyProfit?.value ?? 0) >= 0) ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
 
   return (
-    <div className="flex w-full flex-col gap-4 md:flex-row md:items-center md:justify-between">
-      {/* Asset Info */}
-      <div className="flex-1 min-w-0">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div className="asset-icon">
-            <span style={{ fontSize: '14px', fontWeight: '600', color: 'var(--color-ink)' }}>
+    <div className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5 sm:py-5">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
+        <div className="flex items-center gap-4 xl:w-[280px] min-w-0">
+          <div className="h-14 w-14 rounded-full bg-surface-soft flex items-center justify-center shrink-0">
+            <span className="text-title-sm font-semibold text-ink">
               {asset.symbol.substring(0, 2).toUpperCase()}
             </span>
           </div>
           <div className="min-w-0">
-            <h3 className="truncate" style={{ fontSize: '16px', fontWeight: '600', color: 'var(--color-ink)', lineHeight: '1.25' }}>
-              {asset.name}
-            </h3>
-            <p className="break-all" style={{ fontSize: '14px', color: 'var(--color-muted)' }}>{asset.symbol}</p>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <h3 className="text-title-sm font-semibold text-ink break-words">{asset.name}</h3>
+              <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                {getAssetTypeLabel(asset.asset_type)}
+              </span>
+            </div>
+            <p className="text-body-sm text-muted break-all">{asset.symbol}</p>
+            {asset.error && <p className="text-body-sm text-semantic-down mt-1">{asset.error}</p>}
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:flex md:flex-1">
-        <div className="md:flex-1 md:text-center">
-          <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
-            {formatAssetQuantity(asset.quantity, asset.asset_type)}
-          </p>
-          <p style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
-            成本价：{formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}
-          </p>
+        <div className="grid flex-1 grid-cols-1 lg:grid-cols-[1.2fr,0.9fr,0.9fr] gap-4">
+          <div className="rounded-xl bg-surface-soft px-4 py-5 text-center flex flex-col items-center justify-center min-h-[136px]">
+            <p className="text-title-sm font-semibold text-ink">{formatAssetQuantity(asset.quantity, asset.asset_type)}</p>
+            <p className="text-body-sm text-muted mt-1">成本价：{formatAssetPrice(asset.buy_price, asset.currency, asset.asset_type)}</p>
+            <p className="font-number text-title-md text-ink mt-3">
+              {asset.current_price !== null ? formatAssetPrice(asset.current_price, asset.currency, asset.asset_type) : '--'}
+            </p>
+            <p className="text-body-sm text-muted mt-1">
+              市值：{asset.current_value !== null ? formatCurrency(asset.current_value, asset.currency) : '--'}
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-surface-soft px-4 py-5 text-center flex flex-col items-center justify-center min-h-[136px]">
+            <p className="text-body-sm text-muted">总收益</p>
+              <p className="font-number text-title-md mt-2" style={{ color: totalProfitColor }}>
+              {displayedProfit
+                ? formatCurrency(displayedProfit.value, displayedProfit.currency)
+                : '--'}
+              </p>
+            <p className="font-number text-body-sm mt-2" style={{ color: totalProfitColor }}>
+              {asset.profit_percent !== null && asset.profit_percent !== undefined ? formatPercent(asset.profit_percent) : '--'}
+            </p>
+          </div>
+
+          <div className="rounded-xl bg-surface-soft px-4 py-5 text-center flex flex-col items-center justify-center min-h-[136px]">
+            <p className="text-body-sm text-muted">今日收益</p>
+              <p className="font-number text-title-md mt-2" style={{ color: dailyProfitColor }}>
+              {displayedDailyProfit
+                ? formatCurrency(displayedDailyProfit.value, displayedDailyProfit.currency)
+                : '--'}
+              </p>
+            <p className="font-number text-body-sm mt-2" style={{ color: dailyProfitColor }}>
+              {asset.daily_profit_percent !== null && asset.daily_profit_percent !== undefined
+                ? formatPercent(asset.daily_profit_percent)
+                : '--'}
+            </p>
+          </div>
         </div>
 
-        <div className="md:flex-1 md:text-center">
-          {asset.current_price !== null ? (
-            <>
-              <p style={{ 
-                fontSize: '16px', 
-                fontWeight: '600', 
-                color: 'var(--color-ink)',
-                lineHeight: '1.25'
-              }} className="font-number">
-                {formatAssetPrice(asset.current_price, asset.currency, asset.asset_type)}
-              </p>
-              <p style={{ fontSize: '12px', color: 'var(--color-muted)' }}>
-                市值：{formatCurrency(asset.current_value || 0, asset.currency)}
-              </p>
-            </>
-          ) : (
-            <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>暂无价格</p>
-          )}
-        </div>
-
-        <div className="md:flex-1 md:text-right">
-          {asset.current_price !== null ? (
-            <>
-              <p style={{ 
-                fontSize: '16px', 
-                fontWeight: '600', 
-                color: profitColor,
-                lineHeight: '1.25'
-              }} className="font-number">
-                {formatCurrency(asset.profit || 0, asset.currency)}
-              </p>
-              <p style={{ 
-                fontSize: '14px', 
-                color: profitColor 
-              }} className="font-number">
-                {formatPercent(asset.profit_percent || 0)}
-              </p>
-              <p style={{ 
-                fontSize: '12px', 
-                color: dailyProfitColor 
-              }} className="font-number">
-                今日：{formatCurrency(asset.daily_profit || 0, asset.currency)}
-              </p>
-            </>
-          ) : (
-            <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>—</p>
-          )}
+        <div className="flex xl:flex-col gap-2 xl:w-[108px]">
+          <Button variant="outline" onClick={onSell} className="flex-1 xl:w-full">
+            <Banknote className="w-4 h-4 mr-1" />
+            卖出
+          </Button>
         </div>
       </div>
     </div>

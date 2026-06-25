@@ -1,33 +1,65 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
-from models import Asset, Alert, User
+from models import Asset, Alert, CustomAlert, PortfolioSnapshot, User
 from services.price_fetcher import PriceFetcher
 from services.currency_rules import currency_for_asset_type
 from datetime import datetime
+import json
 import re
 
 prices_bp = Blueprint('prices', __name__, url_prefix='/api/prices')
 SUPPORTED_SETTLEMENT_CURRENCIES = {'CNY', 'HKD', 'USD'}
+SUPPORTED_PNL_DISPLAY_MODES = {'CNY', 'USD', 'ORIGINAL'}
+TYPE_SORT_ORDER = {
+    'a_stock': 0,
+    'otc_fund': 1,
+    'hk_stock': 2,
+    'us_stock': 3,
+    'crypto': 4,
+    'commodity': 5,
+}
 
 def _current_user_id():
     return int(get_jwt_identity())
 
-@prices_bp.route('/portfolio', methods=['GET'])
-@jwt_required()
-def get_portfolio_prices():
-    user_id = _current_user_id()
-    user = User.query.get(user_id)
-    assets = Asset.query.filter_by(user_id=user_id).all()
-    
-    target_currency = (request.args.get('currency') or user.preferred_currency or 'CNY').upper()
-    if target_currency not in SUPPORTED_SETTLEMENT_CURRENCIES:
-        target_currency = 'CNY'
-    
+
+def _normalize_pnl_display_mode(value):
+    mode = (value or 'ORIGINAL').upper()
+    if mode not in SUPPORTED_PNL_DISPLAY_MODES:
+        return 'ORIGINAL'
+    return mode
+
+
+def _normalize_manual_alert_symbol(symbol, asset_type):
+    raw = (symbol or '').strip().upper()
+    if not raw:
+        return raw
+
+    if asset_type == 'a_stock':
+        code = raw.replace('.SS', '').replace('.SZ', '')
+        if re.fullmatch(r'\d{6}', code):
+            if code.startswith(('00', '30', '15', '16', '18')):
+                return f'{code}.SZ'
+            if code.startswith(('50', '51', '52', '56', '58', '60', '68', '90')):
+                return f'{code}.SS'
+    elif asset_type == 'hk_stock':
+        code = raw.replace('.HK', '')
+        if re.fullmatch(r'\d{1,5}', code):
+            return f'{code.zfill(5)}.HK'
+    elif asset_type == 'otc_fund':
+        code = raw.replace('.OF', '')
+        if re.fullmatch(r'\d{6}', code):
+            return code
+
+    return raw
+
+
+def _build_portfolio_payload(user, assets, target_currency, pnl_display_mode):
     portfolio_data = []
     summary_by_currency = {}
     normalized_assets = False
-    
+
     for asset in assets:
         expected_currency = currency_for_asset_type(asset.asset_type)
         if asset.currency != expected_currency:
@@ -35,19 +67,28 @@ def get_portfolio_prices():
             normalized_assets = True
 
         price_data = PriceFetcher.get_price(asset.symbol, asset.asset_type)
-        
+
         if price_data:
             current_price = price_data['current_price']
             previous_close = price_data['previous_close']
             price_currency = price_data['currency']
             calc_currency = expected_currency
-            
+
             currency_mismatch = asset.currency != price_currency
             asset_investment = None
             asset_current_value = None
             asset_profit = None
             asset_profit_percent = None
             asset_daily_profit = None
+            asset_daily_profit_percent = None
+            display_profit = None
+            display_daily_profit = None
+            display_profit_currency = calc_currency if pnl_display_mode == 'ORIGINAL' else pnl_display_mode
+            sort_current_value_base = None
+            sort_profit_base = None
+
+            if previous_close and previous_close > 0:
+                asset_daily_profit_percent = ((current_price - previous_close) / previous_close) * 100
 
             if not currency_mismatch:
                 asset_investment = asset.quantity * asset.buy_price
@@ -68,7 +109,19 @@ def get_portfolio_prices():
                 summary['total_current_value'] += asset_current_value
                 summary['total_profit'] += asset_profit
                 summary['daily_profit'] += asset_daily_profit
-            
+
+                settlement_rate = PriceFetcher.get_exchange_rate(calc_currency, target_currency)
+                sort_current_value_base = asset_current_value * settlement_rate
+                sort_profit_base = asset_profit * settlement_rate
+
+                if pnl_display_mode == 'ORIGINAL':
+                    display_profit = asset_profit
+                    display_daily_profit = asset_daily_profit
+                else:
+                    pnl_rate = PriceFetcher.get_exchange_rate(calc_currency, pnl_display_mode)
+                    display_profit = asset_profit * pnl_rate
+                    display_daily_profit = asset_daily_profit * pnl_rate
+
             portfolio_data.append({
                 **asset.to_dict(),
                 'original_buy_price': asset.buy_price,
@@ -78,11 +131,19 @@ def get_portfolio_prices():
                 'profit': asset_profit,
                 'profit_percent': asset_profit_percent,
                 'daily_profit': asset_daily_profit,
+                'daily_profit_percent': asset_daily_profit_percent,
+                'display_profit': display_profit,
+                'display_daily_profit': display_daily_profit,
+                'display_profit_currency': display_profit_currency,
+                'pnl_display_mode': pnl_display_mode,
                 'currency': calc_currency,
                 'asset_currency': asset.currency,
                 'price_currency': price_currency,
                 'investment': asset_investment,
                 'current_value': asset_current_value,
+                'sort_current_value_base': sort_current_value_base,
+                'sort_profit_base': sort_profit_base,
+                'type_sort_order': TYPE_SORT_ORDER.get(asset.asset_type, 999),
                 'source': price_data.get('source'),
                 'quote_time': price_data.get('quote_time'),
                 'currency_mismatch': currency_mismatch,
@@ -95,14 +156,22 @@ def get_portfolio_prices():
                 'profit': None,
                 'profit_percent': None,
                 'daily_profit': None,
+                'daily_profit_percent': None,
+                'display_profit': None,
+                'display_daily_profit': None,
+                'display_profit_currency': asset.currency if pnl_display_mode == 'ORIGINAL' else pnl_display_mode,
+                'pnl_display_mode': pnl_display_mode,
                 'investment': None,
                 'current_value': None,
+                'sort_current_value_base': None,
+                'sort_profit_base': None,
+                'type_sort_order': TYPE_SORT_ORDER.get(asset.asset_type, 999),
                 'error': '价格获取失败'
             })
 
     if normalized_assets:
         db.session.commit()
-    
+
     for summary in summary_by_currency.values():
         if summary['total_investment'] > 0:
             summary['total_profit_percent'] = (summary['total_profit'] / summary['total_investment']) * 100
@@ -117,6 +186,7 @@ def get_portfolio_prices():
     }
 
     exchange_rates = {}
+    pnl_exchange_rates = {}
     for source_currency, summary in summary_by_currency.items():
         rate = PriceFetcher.get_exchange_rate(source_currency, target_currency)
         exchange_rates[source_currency] = rate
@@ -125,55 +195,148 @@ def get_portfolio_prices():
         total_summary['total_profit'] += summary['total_profit'] * rate
         total_summary['daily_profit'] += summary['daily_profit'] * rate
 
+    for source_currency in {asset.currency for asset in assets} | set(summary_by_currency.keys()):
+        pnl_exchange_rates[source_currency] = {
+            'CNY': PriceFetcher.get_exchange_rate(source_currency, 'CNY'),
+            'HKD': PriceFetcher.get_exchange_rate(source_currency, 'HKD'),
+            'USD': PriceFetcher.get_exchange_rate(source_currency, 'USD'),
+        }
+
     if total_summary['total_investment'] > 0:
         total_summary['total_profit_percent'] = (
             total_summary['total_profit'] / total_summary['total_investment']
         ) * 100
-    
-    return jsonify({
+
+    return {
         'portfolio': portfolio_data,
         'summary': total_summary,
         'summary_by_currency': summary_by_currency,
         'settlement_currency': target_currency,
         'exchange_rates': exchange_rates,
-    })
+        'pnl_exchange_rates': pnl_exchange_rates,
+        'pnl_display_mode': pnl_display_mode,
+    }
+
+@prices_bp.route('/portfolio', methods=['GET'])
+@jwt_required()
+def get_portfolio_prices():
+    user_id = _current_user_id()
+    user = User.query.get(user_id)
+    assets = Asset.query.filter_by(user_id=user_id).all()
+
+    target_currency = (request.args.get('currency') or user.preferred_currency or 'CNY').upper()
+    if target_currency not in SUPPORTED_SETTLEMENT_CURRENCIES:
+        target_currency = 'CNY'
+    pnl_display_mode = _normalize_pnl_display_mode(request.args.get('pnl_mode'))
+    refresh = str(request.args.get('refresh', '')).lower() in {'1', 'true', 'yes'}
+
+    snapshot = PortfolioSnapshot.query.filter_by(
+        user_id=user_id,
+        settlement_currency=target_currency,
+        pnl_display_mode=pnl_display_mode,
+    ).first()
+
+    if snapshot and not refresh:
+        payload = json.loads(snapshot.payload)
+        payload['updated_at'] = snapshot.updated_at.isoformat()
+        payload['cached'] = True
+        return jsonify(payload)
+
+    payload = _build_portfolio_payload(user, assets, target_currency, pnl_display_mode)
+
+    if snapshot:
+        snapshot.payload = json.dumps(payload, ensure_ascii=False)
+        snapshot.updated_at = datetime.utcnow()
+    else:
+        snapshot = PortfolioSnapshot(
+            user_id=user_id,
+            settlement_currency=target_currency,
+            pnl_display_mode=pnl_display_mode,
+            payload=json.dumps(payload, ensure_ascii=False),
+            updated_at=datetime.utcnow(),
+        )
+        db.session.add(snapshot)
+    db.session.commit()
+
+    payload['updated_at'] = snapshot.updated_at.isoformat()
+    payload['cached'] = False
+    return jsonify(payload)
 
 @prices_bp.route('/check-alerts', methods=['GET'])
 @jwt_required()
 def check_alerts():
     user_id = _current_user_id()
     assets = Asset.query.filter_by(user_id=user_id).all()
+    assets_by_id = {asset.id: asset for asset in assets}
     alerts = Alert.query.filter_by(user_id=user_id, is_active=True, triggered=False).all()
-    
+    custom_alerts = CustomAlert.query.filter_by(user_id=user_id, is_active=True, triggered=False).all()
+
     triggered_alerts = []
-    
-    for asset in assets:
+
+    for alert in alerts:
+        asset = assets_by_id.get(alert.asset_id)
+        if not asset:
+            continue
+
         price_data = PriceFetcher.get_price(asset.symbol, asset.asset_type)
-        
-        if price_data:
-            current_price = price_data['current_price']
-            asset_alerts = [a for a in alerts if a.asset_id == asset.id]
-            
-            for alert in asset_alerts:
-                should_trigger = False
-                
-                if alert.alert_type == 'above' and current_price >= alert.target_price:
-                    should_trigger = True
-                elif alert.alert_type == 'below' and current_price <= alert.target_price:
-                    should_trigger = True
-                
-                if should_trigger:
-                    alert.triggered = True
-                    alert.triggered_at = datetime.utcnow()
-                    db.session.commit()
-                    
-                    triggered_alerts.append({
-                        **alert.to_dict(),
-                        'asset': asset.to_dict(),
-                        'current_price': current_price,
-                        'target_price': alert.target_price
-                    })
-    
+        if not price_data:
+            continue
+
+        current_price = price_data['current_price']
+        should_trigger = (
+            (alert.alert_type == 'above' and current_price >= alert.target_price) or
+            (alert.alert_type == 'below' and current_price <= alert.target_price)
+        )
+
+        if should_trigger:
+            alert.triggered = True
+            alert.triggered_at = datetime.utcnow()
+            triggered_alerts.append({
+                'id': f'asset-{alert.id}',
+                'kind': 'asset',
+                'name': asset.name,
+                'symbol': asset.symbol,
+                'asset_type': asset.asset_type,
+                'currency': asset.currency,
+                'notification_method': alert.notification_method,
+                'current_price': current_price,
+                'target_price': alert.target_price,
+                'alert_type': alert.alert_type,
+                'triggered_at': alert.triggered_at.isoformat(),
+            })
+
+    for alert in custom_alerts:
+        symbol = _normalize_manual_alert_symbol(alert.symbol, alert.asset_type)
+        price_data = PriceFetcher.get_price(symbol, alert.asset_type)
+        if not price_data:
+            continue
+
+        current_price = price_data['current_price']
+        should_trigger = (
+            (alert.alert_type == 'above' and current_price >= alert.target_price) or
+            (alert.alert_type == 'below' and current_price <= alert.target_price)
+        )
+
+        if should_trigger:
+            alert.triggered = True
+            alert.triggered_at = datetime.utcnow()
+            triggered_alerts.append({
+                'id': f'custom-{alert.id}',
+                'kind': 'manual',
+                'name': alert.name,
+                'symbol': symbol,
+                'asset_type': alert.asset_type,
+                'currency': alert.currency,
+                'notification_method': alert.notification_method,
+                'current_price': current_price,
+                'target_price': alert.target_price,
+                'alert_type': alert.alert_type,
+                'triggered_at': alert.triggered_at.isoformat(),
+            })
+
+    if triggered_alerts:
+        db.session.commit()
+
     return jsonify({
         'triggered_alerts': triggered_alerts
     })

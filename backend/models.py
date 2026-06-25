@@ -12,7 +12,9 @@ class User(db.Model):
     
     assets = db.relationship('Asset', backref='user', lazy=True, cascade='all, delete-orphan')
     alerts = db.relationship('Alert', backref='user', lazy=True, cascade='all, delete-orphan')
+    custom_alerts = db.relationship('CustomAlert', backref='user', lazy=True, cascade='all, delete-orphan')
     trade_records = db.relationship('TradeRecord', backref='user', lazy=True, cascade='all, delete-orphan')
+    portfolio_snapshots = db.relationship('PortfolioSnapshot', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -79,6 +81,56 @@ class Alert(db.Model):
             'triggered': self.triggered,
             'triggered_at': self.triggered_at.isoformat() if self.triggered_at else None,
             'created_at': self.created_at.isoformat()
+        }
+
+class CustomAlert(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    symbol = db.Column(db.String(50), nullable=False)
+    asset_type = db.Column(db.String(20), nullable=False)
+    currency = db.Column(db.String(10), nullable=False)
+    target_price = db.Column(db.Float, nullable=False)
+    alert_type = db.Column(db.String(10), nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    notification_method = db.Column(db.String(50), default='browser')
+    triggered = db.Column(db.Boolean, default=False)
+    triggered_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'name': self.name,
+            'symbol': self.symbol,
+            'asset_type': self.asset_type,
+            'currency': self.currency,
+            'target_price': self.target_price,
+            'alert_type': self.alert_type,
+            'is_active': self.is_active,
+            'notification_method': self.notification_method,
+            'triggered': self.triggered,
+            'triggered_at': self.triggered_at.isoformat() if self.triggered_at else None,
+            'created_at': self.created_at.isoformat(),
+        }
+
+class PortfolioSnapshot(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    settlement_currency = db.Column(db.String(10), nullable=False)
+    pnl_display_mode = db.Column(db.String(20), nullable=False, default='ORIGINAL')
+    payload = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'settlement_currency': self.settlement_currency,
+            'pnl_display_mode': self.pnl_display_mode,
+            'payload': self.payload,
+            'updated_at': self.updated_at.isoformat(),
         }
 
 class TradeRecord(db.Model):

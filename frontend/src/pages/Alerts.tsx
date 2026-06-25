@@ -1,13 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
-import { Plus, Bell, Trash2, Edit2, X, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import {
+  Plus,
+  Bell,
+  Trash2,
+  Edit2,
+  X,
+  Clock,
+  CheckCircle2,
+  Loader2,
+  PencilLine,
+} from 'lucide-react';
 import { api } from '../lib/api';
 import { Alert, Asset } from '../types';
 import { formatCurrency, getAssetTypeLabel } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+
+type AlertMode = 'asset' | 'manual';
+
+const notificationOptions = [
+  { value: 'browser', label: '浏览器弹窗' },
+  { value: 'sound', label: '声音提醒' },
+  { value: 'both', label: '弹窗 + 声音' },
+];
+
+const assetTypeOptions = [
+  { value: 'a_stock', label: 'A股' },
+  { value: 'otc_fund', label: '场外基金' },
+  { value: 'hk_stock', label: '港股' },
+  { value: 'us_stock', label: '美股' },
+  { value: 'crypto', label: '加密货币' },
+  { value: 'commodity', label: '大宗商品' },
+];
+
+const notificationLabel = (value: string) => {
+  if (value === 'browser' || value === 'popup') return '浏览器弹窗';
+  if (value === 'sound' || value === 'vibrate') return '声音提醒';
+  return '弹窗 + 声音';
+};
 
 export const Alerts: React.FC = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -15,12 +48,16 @@ export const Alerts: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAlert, setEditingAlert] = useState<Alert | null>(null);
+  const [mode, setMode] = useState<AlertMode>('asset');
 
   const [formData, setFormData] = useState({
     asset_id: '',
+    name: '',
+    symbol: '',
+    asset_type: 'a_stock',
     target_price: '',
     alert_type: 'above',
-    notification_method: 'popup',
+    notification_method: 'browser',
   });
 
   const fetchData = async () => {
@@ -46,16 +83,28 @@ export const Alerts: React.FC = () => {
     e.preventDefault();
 
     try {
-      const data = {
-        ...formData,
-        asset_id: parseInt(formData.asset_id),
+      const baseData = {
         target_price: parseFloat(formData.target_price),
+        alert_type: formData.alert_type,
+        notification_method: formData.notification_method,
       };
 
+      const payload = mode === 'asset'
+        ? {
+            ...baseData,
+            asset_id: parseInt(formData.asset_id),
+          }
+        : {
+            ...baseData,
+            name: formData.name.trim() || formData.symbol.trim().toUpperCase(),
+            symbol: formData.symbol.trim(),
+            asset_type: formData.asset_type,
+          };
+
       if (editingAlert) {
-        await api.put(`/alerts/${editingAlert.id}`, data);
+        await api.put(`/alerts/${editingAlert.id}`, payload);
       } else {
-        await api.post('/alerts', data);
+        await api.post('/alerts', payload);
       }
 
       setShowModal(false);
@@ -68,16 +117,20 @@ export const Alerts: React.FC = () => {
 
   const handleEdit = (alert: Alert) => {
     setEditingAlert(alert);
+    setMode(alert.kind === 'manual' ? 'manual' : 'asset');
     setFormData({
-      asset_id: alert.asset_id.toString(),
+      asset_id: alert.asset_id ? String(alert.asset_id) : '',
+      name: alert.name || '',
+      symbol: alert.symbol || '',
+      asset_type: alert.asset_type || 'a_stock',
       target_price: alert.target_price.toString(),
       alert_type: alert.alert_type,
-      notification_method: alert.notification_method,
+      notification_method: alert.notification_method || 'browser',
     });
     setShowModal(true);
   };
 
-  const handleDelete = async (alertId: number) => {
+  const handleDelete = async (alertId: string) => {
     if (confirm('确定要删除这个提醒吗？')) {
       try {
         await api.delete(`/alerts/${alertId}`);
@@ -91,14 +144,16 @@ export const Alerts: React.FC = () => {
   const resetForm = () => {
     setFormData({
       asset_id: '',
+      name: '',
+      symbol: '',
+      asset_type: 'a_stock',
       target_price: '',
       alert_type: 'above',
-      notification_method: 'popup',
+      notification_method: 'browser',
     });
+    setMode('asset');
     setEditingAlert(null);
   };
-
-  const getAssetById = (id: number) => assets.find(a => a.id === id);
 
   if (loading) {
     return (
@@ -113,34 +168,22 @@ export const Alerts: React.FC = () => {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6 sm:mb-8">
         <div>
           <h1 className="text-title-lg font-bold text-ink mb-1">价格提醒</h1>
-          <p className="text-body text-muted">设置价格预警，不错过任何机会</p>
+          <p className="text-body text-muted">支持持仓提醒，也支持手动输入代码或品种设置提醒</p>
         </div>
-        {assets.length > 0 && (
-          <Button onClick={() => setShowModal(true)} className="w-full sm:w-auto">
-            <Plus className="w-5 h-5 mr-2" />
-            添加提醒
-          </Button>
-        )}
+        <Button onClick={() => setShowModal(true)} className="w-full sm:w-auto">
+          <Plus className="w-5 h-5 mr-2" />
+          添加提醒
+        </Button>
       </div>
 
-      {assets.length === 0 ? (
-        <Card>
-          <CardContent className="text-center py-16">
-            <div className="w-16 h-16 bg-surface-soft rounded-full flex items-center justify-center mx-auto mb-4">
-              <Bell className="w-8 h-8 text-muted" />
-            </div>
-            <h3 className="text-title-md font-semibold text-ink mb-2">请先添加资产</h3>
-            <p className="text-body text-muted">添加资产后再设置价格提醒</p>
-          </CardContent>
-        </Card>
-      ) : alerts.length === 0 ? (
+      {alerts.length === 0 ? (
         <Card>
           <CardContent className="text-center py-16">
             <div className="w-16 h-16 bg-surface-soft rounded-full flex items-center justify-center mx-auto mb-4">
               <Bell className="w-8 h-8 text-muted" />
             </div>
             <h3 className="text-title-md font-semibold text-ink mb-2">还没有设置任何价格提醒</h3>
-            <p className="text-body text-muted mb-6">设置价格预警，不错过任何机会</p>
+            <p className="text-body text-muted mb-6">可以从持仓里选，也可以手动输入代码和资产类型</p>
             <Button onClick={() => setShowModal(true)}>
               <Plus className="w-5 h-5 mr-2" />
               添加第一个提醒
@@ -149,80 +192,75 @@ export const Alerts: React.FC = () => {
         </Card>
       ) : (
         <div className="space-y-4">
-          {alerts.map((alert, index) => {
-            const asset = getAssetById(alert.asset_id);
-            return (
-              <motion.div
-                key={alert.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-              >
-                <Card className={alert.triggered ? 'opacity-60' : ''}>
-                  <CardContent className="py-5">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-start sm:items-center flex-1 min-w-0">
-                        <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center mr-3 sm:mr-4 shrink-0">
-                          {alert.triggered ? (
-                            <CheckCircle2 className="w-6 h-6 text-semantic-up" />
-                          ) : alert.is_active ? (
-                            <Bell className="w-6 h-6 text-coinbase-blue" />
-                          ) : (
-                            <Clock className="w-6 h-6 text-muted" />
+          {alerts.map((alert, index) => (
+            <motion.div
+              key={alert.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: index * 0.05 }}
+            >
+              <Card className={alert.triggered ? 'opacity-60' : ''}>
+                <CardContent className="py-5">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start sm:items-center flex-1 min-w-0">
+                      <div className="w-12 h-12 bg-surface-soft rounded-full flex items-center justify-center mr-3 sm:mr-4 shrink-0">
+                        {alert.kind === 'manual' ? (
+                          <PencilLine className="w-6 h-6 text-coinbase-blue" />
+                        ) : alert.triggered ? (
+                          <CheckCircle2 className="w-6 h-6 text-semantic-up" />
+                        ) : alert.is_active ? (
+                          <Bell className="w-6 h-6 text-coinbase-blue" />
+                        ) : (
+                          <Clock className="w-6 h-6 text-muted" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <h3 className="text-title-sm font-semibold text-ink">
+                            {alert.name}
+                          </h3>
+                          <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                            {alert.kind === 'manual' ? '手动' : '持仓'}
+                          </span>
+                          {alert.asset_type && (
+                            <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                              {getAssetTypeLabel(alert.asset_type)}
+                            </span>
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex flex-wrap items-center gap-2 mb-1">
-                            <h3 className="text-title-sm font-semibold text-ink">
-                              {asset?.name || '未知资产'}
-                            </h3>
-                            {asset && (
-                              <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
-                                {getAssetTypeLabel(asset.asset_type)}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-body-sm text-muted mb-2">
-                            当价格 {alert.alert_type === 'above' ? '超过' : '低于'}{' '}
-                            <span className="font-semibold text-ink">
-                              {formatCurrency(alert.target_price, asset?.currency || 'USD')}
-                            </span>{' '}
-                            时提醒
-                          </p>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-caption text-muted">
-                            <span>
-                              {alert.notification_method === 'popup' ? '弹窗提醒' : 
-                               alert.notification_method === 'vibrate' ? '震动提醒' : '两者都有'}
+                        <p className="text-body-sm text-muted break-all">
+                          {alert.symbol} · 当价格 {alert.alert_type === 'above' ? '超过' : '低于'} {formatCurrency(alert.target_price, alert.currency || 'USD')}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-caption text-muted mt-2">
+                          <span>{notificationLabel(alert.notification_method)}</span>
+                          {alert.triggered && (
+                            <span className="flex items-center text-semantic-up">
+                              <CheckCircle2 className="w-4 h-4 mr-1" />
+                              已触发
                             </span>
-                            {alert.triggered && (
-                              <span className="flex items-center text-semantic-up">
-                                <CheckCircle2 className="w-4 h-4 mr-1" />
-                                已触发
-                              </span>
-                            )}
-                            {!alert.is_active && (
-                              <span className="flex items-center">
-                                <Clock className="w-4 h-4 mr-1" />
-                                已暂停
-                              </span>
-                            )}
-                          </div>
+                          )}
+                          {!alert.is_active && (
+                            <span className="flex items-center">
+                              <Clock className="w-4 h-4 mr-1" />
+                              已暂停
+                            </span>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 sm:ml-4">
-                        <Button variant="ghost" size="sm" onClick={() => handleEdit(alert)}>
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => handleDelete(alert.id)}>
-                          <Trash2 className="w-4 h-4 text-semantic-down" />
-                        </Button>
-                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            );
-          })}
+                    <div className="flex items-center gap-2 sm:ml-4">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(alert)}>
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(alert.id)}>
+                        <Trash2 className="w-4 h-4 text-semantic-down" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          ))}
         </div>
       )}
 
@@ -262,67 +300,127 @@ export const Alerts: React.FC = () => {
                 </Button>
               </div>
 
-              <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5 max-h-[80vh] overflow-y-auto">
-                <div>
-                  <label className="block text-caption font-medium text-ink mb-2">
-                    选择资产
-                  </label>
-                  <Select
-                    value={formData.asset_id}
-                    onChange={(e) => setFormData({ ...formData, asset_id: e.target.value })}
-                    required
+              <div className="px-6 pt-5">
+                <div className="flex items-center gap-2 rounded-xl bg-surface-soft p-1">
+                  <button
+                    type="button"
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      mode === 'asset' ? 'bg-canvas text-ink shadow-soft' : 'text-muted'
+                    }`}
+                    onClick={() => setMode('asset')}
                   >
-                    <option value="">请选择资产</option>
-                    {assets.map((asset) => (
-                      <option key={asset.id} value={asset.id}>
-                        {asset.name} ({asset.symbol})
+                    持仓提醒
+                  </button>
+                  <button
+                    type="button"
+                    className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      mode === 'manual' ? 'bg-canvas text-ink shadow-soft' : 'text-muted'
+                    }`}
+                    onClick={() => setMode('manual')}
+                  >
+                    手动输入
+                  </button>
+                </div>
+              </div>
+
+              <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5 max-h-[80vh] overflow-y-auto">
+                {mode === 'asset' ? (
+                  <div>
+                    <label className="block text-caption font-medium text-ink mb-2">选择持仓</label>
+                    <Select
+                      value={formData.asset_id}
+                      onChange={(e) => setFormData({ ...formData, asset_id: e.target.value })}
+                      required
+                    >
+                      <option value="">请选择资产</option>
+                      {assets.map((asset) => (
+                        <option key={asset.id} value={asset.id}>
+                          {asset.name} ({asset.symbol})
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-caption font-medium text-ink mb-2">名称</label>
+                        <Input
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          placeholder="可选，不填则使用代码"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-caption font-medium text-ink mb-2">类型</label>
+                        <Select
+                          value={formData.asset_type}
+                          onChange={(e) => setFormData({ ...formData, asset_type: e.target.value })}
+                        >
+                          {assetTypeOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-caption font-medium text-ink mb-2">代码 / 品种</label>
+                      <Input
+                        value={formData.symbol}
+                        onChange={(e) => setFormData({ ...formData, symbol: e.target.value })}
+                        placeholder="例如 600519、0700、BTC、GC=F"
+                        required
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-caption font-medium text-ink mb-2">提醒类型</label>
+                    <Select
+                      value={formData.alert_type}
+                      onChange={(e) => setFormData({ ...formData, alert_type: e.target.value as 'above' | 'below' })}
+                    >
+                      <option value="above">价格超过...</option>
+                      <option value="below">价格低于...</option>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <label className="block text-caption font-medium text-ink mb-2">目标价格</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.target_price}
+                      onChange={(e) => setFormData({ ...formData, target_price: e.target.value })}
+                      placeholder="目标价格"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-caption font-medium text-ink mb-2">提醒方式</label>
+                  <Select
+                    value={formData.notification_method}
+                    onChange={(e) => setFormData({ ...formData, notification_method: e.target.value })}
+                  >
+                    {notificationOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
                       </option>
                     ))}
                   </Select>
                 </div>
 
-                <div>
-                  <label className="block text-caption font-medium text-ink mb-2">
-                    提醒类型
-                  </label>
-                  <Select
-                    value={formData.alert_type}
-                    onChange={(e) => setFormData({ ...formData, alert_type: e.target.value as 'above' | 'below' })}
-                  >
-                    <option value="above">价格超过...</option>
-                    <option value="below">价格低于...</option>
-                  </Select>
+                <div className="rounded-xl bg-surface-soft px-4 py-3 text-body-sm text-muted">
+                  浏览器弹窗需要允许通知权限；声音提醒会在触发时播放提示音。
                 </div>
 
-                <div>
-                  <label className="block text-caption font-medium text-ink mb-2">
-                    目标价格
-                  </label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.target_price}
-                    onChange={(e) => setFormData({ ...formData, target_price: e.target.value })}
-                    placeholder="目标价格"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-caption font-medium text-ink mb-2">
-                    提醒方式
-                  </label>
-                  <Select
-                    value={formData.notification_method}
-                    onChange={(e) => setFormData({ ...formData, notification_method: e.target.value })}
-                  >
-                    <option value="popup">弹窗提醒</option>
-                    <option value="vibrate">震动提醒</option>
-                    <option value="both">两者都有</option>
-                  </Select>
-                </div>
-
-                <div className="flex space-x-3 pt-2">
+                <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
                   <Button type="submit" className="flex-1">
                     {editingAlert ? '保存' : '添加'}
                   </Button>

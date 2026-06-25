@@ -1,62 +1,180 @@
+from datetime import datetime
+import re
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from datetime import datetime
+
 from db import db
-from models import Alert, Asset
+from models import Alert, Asset, CustomAlert
+from services.currency_rules import currency_for_asset_type
 
 alerts_bp = Blueprint('alerts', __name__, url_prefix='/api/alerts')
 
+
 def _current_user_id():
     return int(get_jwt_identity())
+
+
+def _normalize_symbol(symbol, asset_type):
+    raw = (symbol or '').strip().upper()
+    if not raw:
+        return raw
+
+    if asset_type == 'a_stock':
+        code = raw.replace('.SS', '').replace('.SZ', '')
+        if re.fullmatch(r'\d{6}', code):
+            if code.startswith(('00', '30', '15', '16', '18')):
+                return f'{code}.SZ'
+            if code.startswith(('50', '51', '52', '56', '58', '60', '68', '90')):
+                return f'{code}.SS'
+    elif asset_type == 'hk_stock':
+        code = raw.replace('.HK', '')
+        if re.fullmatch(r'\d{1,5}', code):
+            return f'{code.zfill(5)}.HK'
+    elif asset_type == 'otc_fund':
+        code = raw.replace('.OF', '')
+        if re.fullmatch(r'\d{6}', code):
+            return code
+
+    return raw
+
+
+def _normalize_existing_alert(alert):
+    asset = alert.asset
+    return {
+        'id': f'asset-{alert.id}',
+        'kind': 'asset',
+        'asset_id': alert.asset_id,
+        'name': asset.name if asset else f'资产 {alert.asset_id}',
+        'symbol': asset.symbol if asset else '',
+        'asset_type': asset.asset_type if asset else '',
+        'currency': asset.currency if asset else '',
+        'target_price': alert.target_price,
+        'alert_type': alert.alert_type,
+        'is_active': alert.is_active,
+        'notification_method': alert.notification_method,
+        'triggered': alert.triggered,
+        'triggered_at': alert.triggered_at.isoformat() if alert.triggered_at else None,
+        'created_at': alert.created_at.isoformat(),
+    }
+
+
+def _normalize_custom_alert(alert):
+    return {
+        'id': f'custom-{alert.id}',
+        'kind': 'manual',
+        'asset_id': None,
+        'name': alert.name,
+        'symbol': alert.symbol,
+        'asset_type': alert.asset_type,
+        'currency': alert.currency,
+        'target_price': alert.target_price,
+        'alert_type': alert.alert_type,
+        'is_active': alert.is_active,
+        'notification_method': alert.notification_method,
+        'triggered': alert.triggered,
+        'triggered_at': alert.triggered_at.isoformat() if alert.triggered_at else None,
+        'created_at': alert.created_at.isoformat(),
+    }
+
+
+def _resolve_alert(alert_id, user_id):
+    alert_id = str(alert_id)
+    if alert_id.startswith('custom-'):
+        raw_id = alert_id.split('-', 1)[1]
+        if not raw_id.isdigit():
+            return None, None
+        return 'manual', CustomAlert.query.filter_by(id=int(raw_id), user_id=user_id).first()
+
+    raw_id = alert_id.split('-', 1)[1] if alert_id.startswith('asset-') else alert_id
+    if not raw_id.isdigit():
+        return None, None
+    return 'asset', Alert.query.filter_by(id=int(raw_id), user_id=user_id).first()
+
 
 @alerts_bp.route('', methods=['GET'])
 @jwt_required()
 def get_alerts():
     user_id = _current_user_id()
-    alerts = Alert.query.filter_by(user_id=user_id).all()
-    return jsonify({'alerts': [alert.to_dict() for alert in alerts]})
+    asset_alerts = Alert.query.filter_by(user_id=user_id).all()
+    custom_alerts = CustomAlert.query.filter_by(user_id=user_id).all()
+
+    normalized = [
+        *(_normalize_existing_alert(alert) for alert in asset_alerts),
+        *(_normalize_custom_alert(alert) for alert in custom_alerts),
+    ]
+    normalized.sort(key=lambda item: item['created_at'], reverse=True)
+
+    return jsonify({'alerts': normalized})
+
 
 @alerts_bp.route('', methods=['POST'])
 @jwt_required()
 def create_alert():
     user_id = _current_user_id()
-    data = request.get_json()
-    
-    required_fields = ['asset_id', 'target_price', 'alert_type']
-    if not all(field in data for field in required_fields):
-        return jsonify({'error': '请填写提醒资产、目标价格和提醒类型'}), 400
-    
-    asset = Asset.query.filter_by(id=data['asset_id'], user_id=user_id).first()
-    if not asset:
-        return jsonify({'error': '资产不存在'}), 404
-    
-    alert = Alert(
+    data = request.get_json() or {}
+
+    target_price = data.get('target_price')
+    alert_type = data.get('alert_type')
+    if target_price in [None, ''] or not alert_type:
+        return jsonify({'error': '请填写目标价格和提醒类型'}), 400
+
+    notification_method = data.get('notification_method', 'browser')
+
+    if data.get('asset_id'):
+        asset = Asset.query.filter_by(id=data['asset_id'], user_id=user_id).first()
+        if not asset:
+            return jsonify({'error': '资产不存在'}), 404
+
+        alert = Alert(
+            user_id=user_id,
+            asset_id=asset.id,
+            target_price=target_price,
+            alert_type=alert_type,
+            notification_method=notification_method,
+        )
+        db.session.add(alert)
+        db.session.commit()
+        return jsonify({
+            'message': '提醒已添加',
+            'alert': _normalize_existing_alert(alert),
+        }), 201
+
+    asset_type = data.get('asset_type')
+    symbol = _normalize_symbol(data.get('symbol'), asset_type)
+    if not symbol or not asset_type:
+        return jsonify({'error': '请填写代码和资产类型'}), 400
+
+    alert = CustomAlert(
         user_id=user_id,
-        asset_id=data['asset_id'],
-        target_price=data['target_price'],
-        alert_type=data['alert_type'],
-        notification_method=data.get('notification_method', 'popup')
+        name=(data.get('name') or symbol).strip(),
+        symbol=symbol,
+        asset_type=asset_type,
+        currency=currency_for_asset_type(asset_type),
+        target_price=target_price,
+        alert_type=alert_type,
+        notification_method=notification_method,
     )
-    
     db.session.add(alert)
     db.session.commit()
-    
+
     return jsonify({
         'message': '提醒已添加',
-        'alert': alert.to_dict()
+        'alert': _normalize_custom_alert(alert),
     }), 201
 
-@alerts_bp.route('/<int:alert_id>', methods=['PUT'])
+
+@alerts_bp.route('/<alert_id>', methods=['PUT'])
 @jwt_required()
 def update_alert(alert_id):
     user_id = _current_user_id()
-    alert = Alert.query.filter_by(id=alert_id, user_id=user_id).first()
-    
+    kind, alert = _resolve_alert(alert_id, user_id)
+
     if not alert:
         return jsonify({'error': '提醒不存在'}), 404
-    
-    data = request.get_json()
-    
+
+    data = request.get_json() or {}
+
     if data.get('target_price') is not None:
         alert.target_price = data['target_price']
     if data.get('alert_type'):
@@ -71,24 +189,34 @@ def update_alert(alert_id):
             alert.triggered_at = datetime.utcnow()
         else:
             alert.triggered_at = None
-    
+
+    if kind == 'manual':
+        if data.get('name') is not None:
+            alert.name = (data.get('name') or alert.symbol).strip()
+        if data.get('asset_type'):
+            alert.asset_type = data['asset_type']
+            alert.currency = currency_for_asset_type(alert.asset_type)
+        if data.get('symbol'):
+            alert.symbol = _normalize_symbol(data['symbol'], alert.asset_type)
+
     db.session.commit()
-    
+
     return jsonify({
         'message': '提醒已更新',
-        'alert': alert.to_dict()
+        'alert': _normalize_existing_alert(alert) if kind == 'asset' else _normalize_custom_alert(alert),
     })
 
-@alerts_bp.route('/<int:alert_id>', methods=['DELETE'])
+
+@alerts_bp.route('/<alert_id>', methods=['DELETE'])
 @jwt_required()
 def delete_alert(alert_id):
     user_id = _current_user_id()
-    alert = Alert.query.filter_by(id=alert_id, user_id=user_id).first()
-    
+    _, alert = _resolve_alert(alert_id, user_id)
+
     if not alert:
         return jsonify({'error': '提醒不存在'}), 404
-    
+
     db.session.delete(alert)
     db.session.commit()
-    
+
     return jsonify({'message': '提醒已删除'})

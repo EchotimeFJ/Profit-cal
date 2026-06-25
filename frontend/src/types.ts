@@ -43,14 +43,27 @@ export interface PortfolioAsset extends Asset {
   profit: number | null;
   profit_percent: number | null;
   daily_profit: number | null;
+  daily_profit_percent?: number | null;
+  display_profit?: number | null;
+  display_daily_profit?: number | null;
+  display_profit_currency?: string;
+  pnl_display_mode?: string;
   investment: number | null;
   current_value: number | null;
+  sort_current_value_base?: number | null;
+  sort_profit_base?: number | null;
+  type_sort_order?: number;
   error?: string;
 }
 
 export interface Alert {
-  id: number;
-  asset_id: number;
+  id: string;
+  kind: 'asset' | 'manual';
+  asset_id: number | null;
+  name: string;
+  symbol: string;
+  asset_type: string;
+  currency: string;
   target_price: number;
   alert_type: 'above' | 'below';
   is_active: boolean;
@@ -74,7 +87,11 @@ export interface PortfolioData {
   summary: PortfolioSummary;
   summary_by_currency?: Record<string, PortfolioSummary>;
   settlement_currency?: string;
+  pnl_display_mode?: string;
   exchange_rates?: Record<string, number>;
+  pnl_exchange_rates?: Record<string, Record<string, number>>;
+  updated_at?: string;
+  cached?: boolean;
 }
 
 export interface AuthState {

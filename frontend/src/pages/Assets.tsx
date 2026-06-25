@@ -220,7 +220,7 @@ export const Assets: React.FC = () => {
       setSellFormData({ sell_price: '', quantity: '', amount: '' });
       fetchAssets();
       fetchHistory();
-      setActiveTab('history');
+      setActiveTab('positions');
     } catch (error: any) {
       alert(error.message || '卖出失败');
     }
@@ -262,7 +262,7 @@ export const Assets: React.FC = () => {
         </Button>
       </div>
 
-      <div className="flex items-center gap-2 mb-6 border-b border-hairline overflow-x-auto">
+      <div className="hidden items-center gap-2 mb-6 border-b border-hairline overflow-x-auto">
         <button
           type="button"
           onClick={() => setActiveTab('positions')}
