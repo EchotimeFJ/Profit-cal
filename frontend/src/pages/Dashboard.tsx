@@ -127,6 +127,18 @@ const getPositionTypeLabel = (type: string) => {
   return getAssetTypeLabel(type);
 };
 
+const getPositionTypeIconLabel = (type: string) => {
+  const labels: Record<string, string> = {
+    a_stock: 'A股',
+    hk_stock: '港股',
+    us_stock: '美股',
+    crypto: '加密',
+    otc_fund: '基金',
+    commodity: '大宗',
+  };
+  return labels[type] || getPositionTypeLabel(type);
+};
+
 export const Dashboard: React.FC = () => {
   const { user, updateUser } = useAuth();
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
@@ -965,16 +977,13 @@ const PositionCard: React.FC<{
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-3">
         <div className="flex min-w-0 items-center gap-4 xl:w-[240px] xl:shrink-0">
           <div className="h-14 w-14 rounded-full bg-surface-soft flex items-center justify-center shrink-0">
-            <span className="text-title-sm font-semibold text-ink">
-              {asset.symbol.substring(0, 2).toUpperCase()}
+            <span className="text-[14px] font-semibold text-ink">
+              {getPositionTypeIconLabel(asset.asset_type)}
             </span>
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-title-sm font-semibold text-ink break-words leading-snug">{asset.name}</h3>
             <p className="text-body-sm text-muted break-all">{asset.symbol}</p>
-            <span className="mt-1 inline-flex w-fit text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
-              {getPositionTypeLabel(asset.asset_type)}
-            </span>
             {asset.error && <p className="text-body-sm text-semantic-down mt-1">{asset.error}</p>}
           </div>
         </div>
