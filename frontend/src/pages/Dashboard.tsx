@@ -641,14 +641,14 @@ export const Dashboard: React.FC = () => {
                         aria-selected={isActive}
                         onClick={() => setAssetFilter(filter.value)}
                         style={{
-                          height: '40px',
-                          padding: '0 18px',
-                          minWidth: '56px',
+                          height: '34px',
+                          padding: '0 14px',
+                          minWidth: '48px',
                           borderRadius: '999px',
                           border: `1px solid ${isActive ? 'var(--color-coinbase-blue)' : 'var(--color-hairline)'}`,
                           backgroundColor: isActive ? 'var(--color-coinbase-blue)' : 'var(--color-canvas)',
                           color: isActive ? '#ffffff' : 'var(--color-ink)',
-                          fontSize: '14px',
+                          fontSize: '13px',
                           fontWeight: 600,
                           whiteSpace: 'nowrap',
                           flexShrink: 0,
@@ -665,24 +665,24 @@ export const Dashboard: React.FC = () => {
             </div>
 
             {activeTab === 'positions' && (
-              <div className="flex w-full flex-col gap-3 xl:w-[560px]">
+              <div className="flex w-full flex-col gap-3 xl:w-[620px]">
                 <Link to="/assets" className="w-full sm:w-auto xl:self-end">
-                  <button className="btn-primary w-full xl:w-auto" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-                    <Plus style={{ width: '16px', height: '16px' }} />
+                  <button className="btn-primary w-full xl:w-auto" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', height: '38px', padding: '0 16px', fontSize: '14px' }}>
+                    <Plus style={{ width: '14px', height: '14px' }} />
                     添加资产
                   </button>
                 </Link>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DashboardSelect
                     label="排序方式"
-                    icon={<ArrowUpDown className="h-4 w-4" />}
+                    icon={<ArrowUpDown className="h-3.5 w-3.5" />}
                     value={sortMode}
                     options={sortOptions}
                     onChange={setSortMode}
                   />
                   <DashboardSelect
                     label="盈亏显示"
-                    icon={<Wallet className="h-4 w-4" />}
+                    icon={<Wallet className="h-3.5 w-3.5" />}
                     value={pnlDisplayMode}
                     options={pnlDisplayOptions}
                     onChange={setPnlDisplayMode}
@@ -926,16 +926,16 @@ function DashboardSelect<T extends string>({
   onChange: (value: T) => void;
 }) {
   return (
-    <label className="group block rounded-2xl border border-hairline bg-surface-soft p-3 transition-colors">
-      <span className="mb-2 flex items-center gap-2 text-caption font-medium text-muted">
+    <label className="group flex items-center justify-between gap-2 rounded-2xl border border-hairline bg-surface-soft px-3 py-2 transition-colors">
+      <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-muted">
         {icon}
         {label}
       </span>
-      <div className="relative">
+      <div className="relative min-w-0 flex-1">
         <Select
           value={value}
           onChange={(event) => onChange(event.target.value as T)}
-          className="h-12 cursor-pointer appearance-none rounded-xl bg-canvas py-0 pl-4 pr-11 text-body-sm font-semibold shadow-none"
+          className="h-9 cursor-pointer appearance-none rounded-xl bg-canvas py-0 pl-3 pr-8 text-[13px] font-semibold shadow-none"
         >
           {options.map((option) => (
             <option key={option.value} value={option.value}>
@@ -943,7 +943,7 @@ function DashboardSelect<T extends string>({
             </option>
           ))}
         </Select>
-        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted transition-colors group-focus-within:text-coinbase-blue" />
+        <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted transition-colors group-focus-within:text-coinbase-blue" />
       </div>
     </label>
   );
@@ -969,14 +969,12 @@ const PositionCard: React.FC<{
               {asset.symbol.substring(0, 2).toUpperCase()}
             </span>
           </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2 mb-1">
-              <h3 className="text-title-sm font-semibold text-ink break-words">{asset.name}</h3>
-              <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
-                {getPositionTypeLabel(asset.asset_type)}
-              </span>
-            </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="text-title-sm font-semibold text-ink break-words leading-snug">{asset.name}</h3>
             <p className="text-body-sm text-muted break-all">{asset.symbol}</p>
+            <span className="mt-1 inline-flex w-fit text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+              {getPositionTypeLabel(asset.asset_type)}
+            </span>
             {asset.error && <p className="text-body-sm text-semantic-down mt-1">{asset.error}</p>}
           </div>
         </div>
