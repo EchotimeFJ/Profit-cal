@@ -4,11 +4,12 @@ import { api } from '../lib/api';
 import { encryptPassword } from '../lib/passwordCrypto';
 
 interface AuthContextType extends AuthState {
-  login: (username: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<void>;
   register: (username: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   updateUser: (data: Partial<User>) => Promise<void>;
   changePassword: (email: string, password: string) => Promise<void>;
+  resetPassword: (email: string, password: string) => Promise<void>;
   loading: boolean;
 }
 
@@ -25,7 +26,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     const token = localStorage.getItem('token');
     const user = localStorage.getItem('user');
-    
+
     if (token && user) {
       api.setToken(token);
       setState({
@@ -34,21 +35,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isAuthenticated: true,
       });
     }
-    
+
     setLoading(false);
   }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (identifier: string, password: string) => {
     const encryptedPassword = await encryptPassword(password);
     const data = await api.post<{ access_token: string; user: User; message: string }>(
       '/auth/login',
-      { username, encrypted_password: encryptedPassword }
+      { identifier, encrypted_password: encryptedPassword }
     );
-    
+
     api.setToken(data.access_token);
     localStorage.setItem('token', data.access_token);
     localStorage.setItem('user', JSON.stringify(data.user));
-    
+
     setState({
       token: data.access_token,
       user: data.user,
@@ -62,11 +63,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       '/auth/register',
       { username, email, encrypted_password: encryptedPassword }
     );
-    
+
     api.setToken(data.access_token);
     localStorage.setItem('token', data.access_token);
     localStorage.setItem('user', JSON.stringify(data.user));
-    
+
     setState({
       token: data.access_token,
       user: data.user,
@@ -78,7 +79,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     api.setToken(null);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    
+
     setState({
       token: null,
       user: null,
@@ -88,10 +89,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const updateUser = async (data: Partial<User>) => {
     const response = await api.put<{ user: User; message: string }>('/auth/me', data);
-    
+
     const updatedUser = response.user;
     localStorage.setItem('user', JSON.stringify(updatedUser));
-    
+
     setState(prev => ({
       ...prev,
       user: updatedUser,
@@ -106,6 +107,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   };
 
+  const resetPassword = async (email: string, password: string) => {
+    const encryptedPassword = await encryptPassword(password);
+    await api.put<{ message: string }>('/auth/forgot-password', {
+      email,
+      encrypted_password: encryptedPassword,
+    });
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -115,6 +124,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         logout,
         updateUser,
         changePassword,
+        resetPassword,
         loading,
       }}
     >

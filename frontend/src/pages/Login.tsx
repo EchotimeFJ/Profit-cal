@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { TrendingUp, Loader2 } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -17,10 +17,10 @@ export const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      await login(username, password);
+      await login(identifier, password);
       navigate('/dashboard');
     } catch (err: any) {
-      setError(err.message || '登录失败，请检查用户名和密码');
+      setError(err.message || '登录失败，请检查账号/邮箱和密码');
     } finally {
       setLoading(false);
     }
@@ -50,12 +50,12 @@ export const Login: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5 sm:gap-6">
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">用户名</label>
+              <label className="block text-sm font-medium text-on-dark mb-2">账号或绑定邮箱</label>
               <input
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="请输入用户名"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="请输入账号或绑定邮箱"
                 required
                 className="input"
                 style={{ width: '100%' }}
@@ -73,6 +73,15 @@ export const Login: React.FC = () => {
                 className="input"
                 style={{ width: '100%' }}
               />
+            </div>
+
+            <div className="-mt-3 text-right">
+              <Link
+                to="/forgot-password"
+                className="text-sm font-medium text-coinbase-blue hover:underline"
+              >
+                忘记密码？
+              </Link>
             </div>
 
             {error && (
