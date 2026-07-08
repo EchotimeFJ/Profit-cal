@@ -2,6 +2,9 @@ from datetime import datetime
 from db import db
 from werkzeug.security import generate_password_hash, check_password_hash
 
+
+PASSWORD_HASH_METHOD = 'pbkdf2:sha256'
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -17,7 +20,7 @@ class User(db.Model):
     portfolio_snapshots = db.relationship('PortfolioSnapshot', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+        self.password_hash = generate_password_hash(password, method=PASSWORD_HASH_METHOD)
     
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
