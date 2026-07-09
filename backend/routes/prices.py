@@ -5,6 +5,7 @@ from models import Asset, Alert, CustomAlert, PortfolioSnapshot, User
 from services.price_fetcher import PriceFetcher
 from services.currency_rules import currency_for_asset_type
 from datetime import datetime
+import math
 import json
 import re
 
@@ -19,6 +20,8 @@ TYPE_SORT_ORDER = {
     'crypto': 4,
     'commodity': 5,
 }
+REACH_TOLERANCE = 0.001
+REACH_EPSILON = 1e-12
 
 def _current_user_id():
     return int(get_jwt_identity())
@@ -55,6 +58,32 @@ def _normalize_manual_alert_symbol(symbol, asset_type):
     return raw
 
 
+def _is_alert_triggered(alert_type, current_price, target_price):
+    if alert_type == 'reach':
+        return abs(current_price - target_price) <= REACH_TOLERANCE + REACH_EPSILON
+    return (
+        (alert_type == 'above' and current_price >= target_price) or
+        (alert_type == 'below' and current_price <= target_price)
+    )
+
+
+def _parse_finite_price(value):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    if not math.isfinite(parsed):
+        return None
+    return parsed
+
+
+def _has_expected_currency(price_data, expected_currency):
+    price_currency = str(price_data.get('currency') or '').upper()
+    expected = str(expected_currency or '').upper()
+    return bool(price_currency and expected and price_currency == expected)
+
+
 def _build_portfolio_payload(user, assets, target_currency, pnl_display_mode):
     portfolio_data = []
     summary_by_currency = {}
@@ -87,7 +116,7 @@ def _build_portfolio_payload(user, assets, target_currency, pnl_display_mode):
             sort_current_value_base = None
             sort_profit_base = None
 
-            if previous_close and previous_close > 0:
+            if previous_close is not None and previous_close > 0:
                 asset_daily_profit_percent = ((current_price - previous_close) / previous_close) * 100
 
             if not currency_mismatch:
@@ -95,7 +124,8 @@ def _build_portfolio_payload(user, assets, target_currency, pnl_display_mode):
                 asset_current_value = asset.quantity * current_price
                 asset_profit = asset_current_value - asset_investment
                 asset_profit_percent = (asset_profit / asset_investment * 100) if asset_investment > 0 else 0
-                asset_daily_profit = asset.quantity * (current_price - previous_close)
+                if previous_close is not None:
+                    asset_daily_profit = asset.quantity * (current_price - previous_close)
 
                 summary = summary_by_currency.setdefault(calc_currency, {
                     'total_investment': 0.0,
@@ -108,7 +138,8 @@ def _build_portfolio_payload(user, assets, target_currency, pnl_display_mode):
                 summary['total_investment'] += asset_investment
                 summary['total_current_value'] += asset_current_value
                 summary['total_profit'] += asset_profit
-                summary['daily_profit'] += asset_daily_profit
+                if asset_daily_profit is not None:
+                    summary['daily_profit'] += asset_daily_profit
 
                 settlement_rate = PriceFetcher.get_exchange_rate(calc_currency, target_currency)
                 sort_current_value_base = asset_current_value * settlement_rate
@@ -120,7 +151,7 @@ def _build_portfolio_payload(user, assets, target_currency, pnl_display_mode):
                 else:
                     pnl_rate = PriceFetcher.get_exchange_rate(calc_currency, pnl_display_mode)
                     display_profit = asset_profit * pnl_rate
-                    display_daily_profit = asset_daily_profit * pnl_rate
+                    display_daily_profit = asset_daily_profit * pnl_rate if asset_daily_profit is not None else None
 
             portfolio_data.append({
                 **asset.to_dict(),
@@ -282,11 +313,12 @@ def check_alerts():
         if not price_data:
             continue
 
-        current_price = price_data['current_price']
-        should_trigger = (
-            (alert.alert_type == 'above' and current_price >= alert.target_price) or
-            (alert.alert_type == 'below' and current_price <= alert.target_price)
-        )
+        current_price = _parse_finite_price(price_data.get('current_price'))
+        if current_price is None:
+            continue
+        if not _has_expected_currency(price_data, asset.currency):
+            continue
+        should_trigger = _is_alert_triggered(alert.alert_type, current_price, alert.target_price)
 
         if should_trigger:
             alert.triggered = True
@@ -311,11 +343,12 @@ def check_alerts():
         if not price_data:
             continue
 
-        current_price = price_data['current_price']
-        should_trigger = (
-            (alert.alert_type == 'above' and current_price >= alert.target_price) or
-            (alert.alert_type == 'below' and current_price <= alert.target_price)
-        )
+        current_price = _parse_finite_price(price_data.get('current_price'))
+        if current_price is None:
+            continue
+        if not _has_expected_currency(price_data, alert.currency):
+            continue
+        should_trigger = _is_alert_triggered(alert.alert_type, current_price, alert.target_price)
 
         if should_trigger:
             alert.triggered = True

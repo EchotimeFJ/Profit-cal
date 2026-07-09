@@ -1,4 +1,5 @@
 from datetime import datetime
+import math
 import re
 
 from flask import Blueprint, request, jsonify
@@ -6,13 +7,33 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from db import db
 from models import Alert, Asset, CustomAlert
-from services.currency_rules import currency_for_asset_type
+from services.currency_rules import ASSET_TYPE_CURRENCY, currency_for_asset_type
 
 alerts_bp = Blueprint('alerts', __name__, url_prefix='/api/alerts')
+ALERT_TYPES = {'above', 'below', 'reach'}
 
 
 def _current_user_id():
     return int(get_jwt_identity())
+
+
+def _validate_alert_type(alert_type):
+    return alert_type in ALERT_TYPES
+
+
+def _validate_asset_type(asset_type):
+    return asset_type in ASSET_TYPE_CURRENCY
+
+
+def _parse_target_price(value):
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    if not math.isfinite(parsed) or parsed <= 0:
+        return None
+    return parsed
 
 
 def _normalize_symbol(symbol, asset_type):
@@ -118,6 +139,11 @@ def create_alert():
     alert_type = data.get('alert_type')
     if target_price in [None, ''] or not alert_type:
         return jsonify({'error': '请填写目标价格和提醒类型'}), 400
+    target_price = _parse_target_price(target_price)
+    if target_price is None:
+        return jsonify({'error': '目标价格必须大于 0'}), 400
+    if not _validate_alert_type(alert_type):
+        return jsonify({'error': '提醒类型无效'}), 400
 
     notification_method = data.get('notification_method', 'browser')
 
@@ -144,6 +170,8 @@ def create_alert():
     symbol = _normalize_symbol(data.get('symbol'), asset_type)
     if not symbol or not asset_type:
         return jsonify({'error': '请填写代码和资产类型'}), 400
+    if not _validate_asset_type(asset_type):
+        return jsonify({'error': '资产类型无效'}), 400
 
     alert = CustomAlert(
         user_id=user_id,
@@ -175,29 +203,43 @@ def update_alert(alert_id):
 
     data = request.get_json() or {}
 
+    should_rearm = False
+
     if data.get('target_price') is not None:
-        alert.target_price = data['target_price']
+        target_price = _parse_target_price(data['target_price'])
+        if target_price is None:
+            return jsonify({'error': '目标价格必须大于 0'}), 400
+        alert.target_price = target_price
+        should_rearm = True
     if data.get('alert_type'):
+        if not _validate_alert_type(data['alert_type']):
+            return jsonify({'error': '提醒类型无效'}), 400
         alert.alert_type = data['alert_type']
+        should_rearm = True
     if data.get('is_active') is not None:
         alert.is_active = data['is_active']
     if data.get('notification_method'):
         alert.notification_method = data['notification_method']
-    if data.get('triggered') is not None:
-        alert.triggered = data['triggered']
-        if data['triggered']:
-            alert.triggered_at = datetime.utcnow()
-        else:
-            alert.triggered_at = None
+    if should_rearm:
+        alert.triggered = False
+        alert.triggered_at = None
 
     if kind == 'manual':
         if data.get('name') is not None:
             alert.name = (data.get('name') or alert.symbol).strip()
         if data.get('asset_type'):
+            if not _validate_asset_type(data['asset_type']):
+                return jsonify({'error': '资产类型无效'}), 400
             alert.asset_type = data['asset_type']
             alert.currency = currency_for_asset_type(alert.asset_type)
+            should_rearm = True
         if data.get('symbol'):
             alert.symbol = _normalize_symbol(data['symbol'], alert.asset_type)
+            should_rearm = True
+
+    if should_rearm:
+        alert.triggered = False
+        alert.triggered_at = None
 
     db.session.commit()
 
