@@ -11,6 +11,7 @@ from services.currency_rules import ASSET_TYPE_CURRENCY, currency_for_asset_type
 
 alerts_bp = Blueprint('alerts', __name__, url_prefix='/api/alerts')
 ALERT_TYPES = {'above', 'below', 'reach'}
+NOTIFICATION_METHODS = {'browser', 'popup', 'sound', 'vibrate', 'both'}
 
 
 def _current_user_id():
@@ -25,6 +26,10 @@ def _validate_asset_type(asset_type):
     return asset_type in ASSET_TYPE_CURRENCY
 
 
+def _validate_notification_method(notification_method):
+    return notification_method in NOTIFICATION_METHODS
+
+
 def _parse_target_price(value):
     try:
         parsed = float(value)
@@ -34,6 +39,13 @@ def _parse_target_price(value):
     if not math.isfinite(parsed) or parsed <= 0:
         return None
     return parsed
+
+
+def _get_json_object():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None
+    return data
 
 
 def _normalize_symbol(symbol, asset_type):
@@ -133,7 +145,9 @@ def get_alerts():
 @jwt_required()
 def create_alert():
     user_id = _current_user_id()
-    data = request.get_json() or {}
+    data = _get_json_object()
+    if data is None:
+        return jsonify({'error': '请求体必须是 JSON 对象'}), 400
 
     target_price = data.get('target_price')
     alert_type = data.get('alert_type')
@@ -146,6 +160,8 @@ def create_alert():
         return jsonify({'error': '提醒类型无效'}), 400
 
     notification_method = data.get('notification_method', 'browser')
+    if not _validate_notification_method(notification_method):
+        return jsonify({'error': '提醒方式无效'}), 400
 
     if data.get('asset_id'):
         asset = Asset.query.filter_by(id=data['asset_id'], user_id=user_id).first()
@@ -201,7 +217,9 @@ def update_alert(alert_id):
     if not alert:
         return jsonify({'error': '提醒不存在'}), 404
 
-    data = request.get_json() or {}
+    data = _get_json_object()
+    if data is None:
+        return jsonify({'error': '请求体必须是 JSON 对象'}), 400
 
     should_rearm = False
 
@@ -219,7 +237,16 @@ def update_alert(alert_id):
     if data.get('is_active') is not None:
         alert.is_active = data['is_active']
     if data.get('notification_method'):
+        if not _validate_notification_method(data['notification_method']):
+            return jsonify({'error': '提醒方式无效'}), 400
         alert.notification_method = data['notification_method']
+    if kind == 'asset' and data.get('asset_id') is not None:
+        try:
+            incoming_asset_id = int(data['asset_id'])
+        except (TypeError, ValueError):
+            return jsonify({'error': '资产不存在'}), 400
+        if incoming_asset_id != alert.asset_id:
+            return jsonify({'error': '编辑已有持仓提醒时不支持更换持仓'}), 400
     if should_rearm:
         alert.triggered = False
         alert.triggered_at = None

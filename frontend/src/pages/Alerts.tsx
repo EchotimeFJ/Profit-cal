@@ -24,6 +24,7 @@ type AlertMode = 'asset' | 'manual';
 const notificationOptions = [
   { value: 'browser', label: '浏览器弹窗' },
   { value: 'sound', label: '声音提醒' },
+  { value: 'vibrate', label: '震动提醒' },
   { value: 'both', label: '弹窗 + 声音' },
 ];
 
@@ -38,7 +39,8 @@ const assetTypeOptions = [
 
 const notificationLabel = (value: string) => {
   if (value === 'browser' || value === 'popup') return '浏览器弹窗';
-  if (value === 'sound' || value === 'vibrate') return '声音提醒';
+  if (value === 'sound') return '声音提醒';
+  if (value === 'vibrate') return '震动提醒';
   return '弹窗 + 声音';
 };
 
@@ -65,6 +67,7 @@ export const Alerts: React.FC = () => {
     alert_type: 'above' as 'above' | 'below' | 'reach',
     notification_method: 'browser',
   });
+  const isEditing = Boolean(editingAlert);
 
   const fetchData = async () => {
     try {
@@ -131,7 +134,7 @@ export const Alerts: React.FC = () => {
       asset_type: alert.asset_type || 'a_stock',
       target_price: alert.target_price.toString(),
       alert_type: alert.alert_type,
-      notification_method: alert.notification_method || 'browser',
+      notification_method: alert.notification_method === 'popup' ? 'browser' : (alert.notification_method || 'browser'),
     });
     setShowModal(true);
   };
@@ -307,13 +310,19 @@ export const Alerts: React.FC = () => {
               </div>
 
               <div className="px-6 pt-5">
+                {isEditing && (
+                  <p className="mb-3 text-caption text-muted">编辑已有提醒时不支持切换提醒来源</p>
+                )}
                 <div className="flex items-center gap-2 rounded-xl bg-surface-soft p-1">
                   <button
                     type="button"
                     className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                       mode === 'asset' ? 'bg-canvas text-ink shadow-soft' : 'text-muted'
                     }`}
-                    onClick={() => setMode('asset')}
+                    onClick={() => {
+                      if (!isEditing) setMode('asset');
+                    }}
+                    disabled={isEditing}
                   >
                     持仓提醒
                   </button>
@@ -322,7 +331,10 @@ export const Alerts: React.FC = () => {
                     className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                       mode === 'manual' ? 'bg-canvas text-ink shadow-soft' : 'text-muted'
                     }`}
-                    onClick={() => setMode('manual')}
+                    onClick={() => {
+                      if (!isEditing) setMode('manual');
+                    }}
+                    disabled={isEditing}
                   >
                     手动输入
                   </button>
@@ -336,6 +348,7 @@ export const Alerts: React.FC = () => {
                     <Select
                       value={formData.asset_id}
                       onChange={(e) => setFormData({ ...formData, asset_id: e.target.value })}
+                      disabled={isEditing}
                       required
                     >
                       <option value="">请选择资产</option>
@@ -345,6 +358,9 @@ export const Alerts: React.FC = () => {
                         </option>
                       ))}
                     </Select>
+                    {isEditing && (
+                      <p className="mt-2 text-caption text-muted">编辑已有持仓提醒时不支持更换持仓</p>
+                    )}
                   </div>
                 ) : (
                   <>

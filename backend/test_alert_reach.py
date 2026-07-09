@@ -93,6 +93,23 @@ class ReachAlertTestCase(unittest.TestCase):
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.get_json()['error'], '目标价格必须大于 0')
 
+    def test_create_alert_rejects_invalid_notification_method(self):
+        response = self.create_manual_alert(notification_method='email')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], '提醒方式无效')
+
+    def test_create_alert_rejects_non_object_json_payload(self):
+        response = self.client.post(
+            '/api/alerts',
+            data='[1]',
+            content_type='application/json',
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], '请求体必须是 JSON 对象')
+
     def test_update_manual_alert_to_reach(self):
         created = self.create_manual_alert()
         self.assertEqual(created.status_code, 201)
@@ -150,6 +167,51 @@ class ReachAlertTestCase(unittest.TestCase):
 
                 self.assertEqual(response.status_code, 400)
                 self.assertEqual(response.get_json()['error'], '目标价格必须大于 0')
+
+    def test_update_alert_rejects_invalid_notification_method(self):
+        created = self.create_manual_alert()
+        self.assertEqual(created.status_code, 201)
+
+        response = self.client.put(
+            f"/api/alerts/{created.get_json()['alert']['id']}",
+            json={'notification_method': 'email'},
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], '提醒方式无效')
+
+    def test_update_alert_rejects_non_object_json_payload(self):
+        created = self.create_manual_alert()
+        self.assertEqual(created.status_code, 201)
+
+        response = self.client.put(
+            f"/api/alerts/{created.get_json()['alert']['id']}",
+            data='[1]',
+            content_type='application/json',
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], '请求体必须是 JSON 对象')
+
+    def test_update_asset_alert_rejects_changing_asset_id(self):
+        first_asset = self.create_asset()
+        second_asset = self.create_asset(symbol='00700.HK', asset_type='hk_stock', buy_price=400, quantity=10)
+        self.assertEqual(first_asset.status_code, 201)
+        self.assertEqual(second_asset.status_code, 201)
+
+        created = self.create_asset_alert(first_asset.get_json()['asset']['id'])
+        self.assertEqual(created.status_code, 201)
+
+        response = self.client.put(
+            f"/api/alerts/{created.get_json()['alert']['id']}",
+            json={'asset_id': second_asset.get_json()['asset']['id']},
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], '编辑已有持仓提醒时不支持更换持仓')
 
     def test_update_alert_ignores_client_triggered_fields(self):
         created = self.create_manual_alert(alert_type='reach')

@@ -13,7 +13,7 @@ os.environ['JWT_SECRET_KEY'] = 'test-jwt-secret-for-add-position'
 
 from app import app  # noqa: E402
 from db import db  # noqa: E402
-from models import Asset, TradeRecord  # noqa: E402
+from models import Alert, Asset, PortfolioSnapshot, TradeRecord  # noqa: E402
 
 
 class AddPositionTestCase(unittest.TestCase):
@@ -42,6 +42,27 @@ class AddPositionTestCase(unittest.TestCase):
         }, headers=self.headers)
         self.assertEqual(created.status_code, 201)
         self.asset_id = created.get_json()['asset']['id']
+
+    def _seed_portfolio_snapshots(self):
+        with app.app_context():
+            asset = db.session.get(Asset, self.asset_id)
+            snapshots = [
+                PortfolioSnapshot(
+                    user_id=asset.user_id,
+                    settlement_currency='CNY',
+                    pnl_display_mode='ORIGINAL',
+                    payload='{"portfolio":[]}',
+                ),
+                PortfolioSnapshot(
+                    user_id=asset.user_id,
+                    settlement_currency='USD',
+                    pnl_display_mode='USD',
+                    payload='{"portfolio":[]}',
+                ),
+            ]
+            db.session.add_all(snapshots)
+            db.session.commit()
+            self.assertEqual(PortfolioSnapshot.query.count(), 2)
 
     def test_add_position_updates_quantity_and_weighted_buy_price(self):
         response = self.client.post(f'/api/assets/{self.asset_id}/add-position', json={
@@ -109,6 +130,139 @@ class AddPositionTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.get_json()['error'], '请求体必须是 JSON 对象')
+
+    def test_create_asset_rejects_non_object_json_payload(self):
+        response = self.client.post(
+            '/api/assets',
+            data='[1]',
+            content_type='application/json',
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], '请求体必须是 JSON 对象')
+
+    def test_update_asset_rejects_non_object_json_payload(self):
+        response = self.client.put(
+            f'/api/assets/{self.asset_id}',
+            data='[1]',
+            content_type='application/json',
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], '请求体必须是 JSON 对象')
+
+    def test_sell_asset_rejects_non_object_json_payload(self):
+        response = self.client.post(
+            f'/api/assets/{self.asset_id}/sell',
+            data='[1]',
+            content_type='application/json',
+            headers=self.headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['error'], '请求体必须是 JSON 对象')
+
+    def test_create_asset_invalidates_portfolio_snapshots(self):
+        self._seed_portfolio_snapshots()
+
+        response = self.client.post('/api/assets', json={
+            'name': '腾讯控股',
+            'symbol': '00700.HK',
+            'asset_type': 'hk_stock',
+            'buy_price': 400,
+            'quantity': 10,
+        }, headers=self.headers)
+
+        self.assertEqual(response.status_code, 201)
+        with app.app_context():
+            self.assertEqual(PortfolioSnapshot.query.count(), 0)
+
+    def test_update_asset_invalidates_portfolio_snapshots(self):
+        self._seed_portfolio_snapshots()
+
+        response = self.client.put(f'/api/assets/{self.asset_id}', json={
+            'buy_price': 12,
+            'quantity': 120,
+        }, headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        with app.app_context():
+            self.assertEqual(PortfolioSnapshot.query.count(), 0)
+
+    def test_sell_asset_invalidates_portfolio_snapshots(self):
+        self._seed_portfolio_snapshots()
+
+        response = self.client.post(f'/api/assets/{self.asset_id}/sell', json={
+            'sell_price': 12,
+            'quantity': 20,
+        }, headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        with app.app_context():
+            self.assertEqual(PortfolioSnapshot.query.count(), 0)
+
+    def test_add_position_invalidates_portfolio_snapshots(self):
+        self._seed_portfolio_snapshots()
+
+        response = self.client.post(f'/api/assets/{self.asset_id}/add-position', json={
+            'buy_price': 8,
+            'quantity': 50,
+        }, headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        with app.app_context():
+            self.assertEqual(PortfolioSnapshot.query.count(), 0)
+
+    def test_delete_asset_invalidates_portfolio_snapshots(self):
+        self._seed_portfolio_snapshots()
+
+        response = self.client.delete(f'/api/assets/{self.asset_id}', headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        with app.app_context():
+            self.assertEqual(PortfolioSnapshot.query.count(), 0)
+
+    def test_delete_asset_removes_related_alerts(self):
+        created = self.client.post('/api/alerts', json={
+            'asset_id': self.asset_id,
+            'target_price': 12,
+            'alert_type': 'above',
+            'notification_method': 'browser',
+        }, headers=self.headers)
+        self.assertEqual(created.status_code, 201)
+
+        with app.app_context():
+            self.assertEqual(Alert.query.filter_by(asset_id=self.asset_id).count(), 1)
+
+        response = self.client.delete(f'/api/assets/{self.asset_id}', headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        with app.app_context():
+            self.assertEqual(Alert.query.filter_by(asset_id=self.asset_id).count(), 0)
+
+    def test_sell_asset_closing_position_removes_related_alerts(self):
+        created = self.client.post('/api/alerts', json={
+            'asset_id': self.asset_id,
+            'target_price': 12,
+            'alert_type': 'above',
+            'notification_method': 'browser',
+        }, headers=self.headers)
+        self.assertEqual(created.status_code, 201)
+
+        with app.app_context():
+            self.assertEqual(Alert.query.filter_by(asset_id=self.asset_id).count(), 1)
+
+        response = self.client.post(f'/api/assets/{self.asset_id}/sell', json={
+            'sell_price': 12,
+            'quantity': 100,
+        }, headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.get_json()['asset_closed'])
+        with app.app_context():
+            self.assertEqual(Alert.query.filter_by(asset_id=self.asset_id).count(), 0)
 
 
 if __name__ == '__main__':

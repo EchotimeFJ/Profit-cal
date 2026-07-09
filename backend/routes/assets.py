@@ -3,7 +3,7 @@ import math
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
-from models import Asset, Alert, TradeRecord
+from models import Asset, Alert, PortfolioSnapshot, TradeRecord
 from services.currency_rules import currency_for_asset_type
 
 assets_bp = Blueprint('assets', __name__, url_prefix='/api/assets')
@@ -28,6 +28,10 @@ def _get_json_object():
     if not isinstance(data, dict):
         return None
     return data
+
+
+def _invalidate_portfolio_snapshots(user_id):
+    PortfolioSnapshot.query.filter_by(user_id=user_id).delete()
 
 def _record_trade(asset, action, price, quantity, *, cost_basis=None, realized_profit=None, realized_profit_percent=None):
     return TradeRecord(
@@ -65,7 +69,9 @@ def get_assets():
 @jwt_required()
 def create_asset():
     user_id = _current_user_id()
-    data = request.get_json()
+    data = _get_json_object()
+    if data is None:
+        return jsonify({'error': '请求体必须是 JSON 对象'}), 400
     
     required_fields = ['name', 'symbol', 'asset_type', 'buy_price']
     if not all(field in data for field in required_fields):
@@ -105,6 +111,7 @@ def create_asset():
         quantity,
         cost_basis=buy_price * quantity,
     ))
+    _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
     
     return jsonify({
@@ -174,7 +181,9 @@ def update_asset(asset_id):
     if not asset:
         return jsonify({'error': '资产不存在'}), 404
     
-    data = request.get_json()
+    data = _get_json_object()
+    if data is None:
+        return jsonify({'error': '请求体必须是 JSON 对象'}), 400
     
     if data.get('name'):
         asset.name = data['name']
@@ -194,7 +203,8 @@ def update_asset(asset_id):
             return jsonify({'error': '数量必须大于 0'}), 400
         asset.quantity = quantity
     asset.currency = currency_for_asset_type(asset.asset_type)
-    
+
+    _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
     
     return jsonify({
@@ -211,7 +221,9 @@ def sell_asset(asset_id):
     if not asset:
         return jsonify({'error': '资产不存在'}), 404
 
-    data = request.get_json() or {}
+    data = _get_json_object()
+    if data is None:
+        return jsonify({'error': '请求体必须是 JSON 对象'}), 400
     sell_price = _to_float(data.get('sell_price'))
     amount = _to_float(data.get('amount'))
     quantity = _to_float(data.get('quantity'))
@@ -251,6 +263,7 @@ def sell_asset(asset_id):
     else:
         asset.quantity = asset.quantity - quantity
 
+    _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
 
     return jsonify({
@@ -303,6 +316,7 @@ def add_position(asset_id):
         quantity,
         cost_basis=added_cost,
     ))
+    _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
 
     return jsonify({
@@ -320,7 +334,9 @@ def delete_asset(asset_id):
     if not asset:
         return jsonify({'error': '资产不存在'}), 404
     
+    Alert.query.filter_by(asset_id=asset.id, user_id=user_id).delete()
     db.session.delete(asset)
+    _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
     
     return jsonify({'message': '资产已删除'})

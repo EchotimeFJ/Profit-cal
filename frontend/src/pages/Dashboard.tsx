@@ -64,7 +64,8 @@ type PnlDisplayMode = typeof pnlDisplayOptions[number]['value'];
 type DashboardTab = 'positions' | 'history';
 
 const notificationUsesBrowser = (method: string) => ['browser', 'popup', 'both'].includes(method);
-const notificationUsesSound = (method: string) => ['sound', 'vibrate', 'both'].includes(method);
+const notificationUsesSound = (method: string) => ['sound', 'both'].includes(method);
+const notificationUsesVibrate = (method: string) => method === 'vibrate';
 
 const playAlertSound = () => {
   try {
@@ -239,6 +240,7 @@ export const Dashboard: React.FC = () => {
       const data = await api.get<{ triggered_alerts: any[] }>('/prices/check-alerts');
       if (data.triggered_alerts.length > 0) {
         setTriggeredAlerts((prev) => [...data.triggered_alerts, ...prev]);
+        const shouldVibrate = data.triggered_alerts.some((alert) => notificationUsesVibrate(alert.notification_method));
         data.triggered_alerts.forEach((alert) => {
           if (notificationUsesBrowser(alert.notification_method)) {
             pushBrowserNotification(alert);
@@ -248,7 +250,7 @@ export const Dashboard: React.FC = () => {
           }
         });
         try {
-          if (navigator.vibrate) {
+          if (shouldVibrate && navigator.vibrate) {
             navigator.vibrate([220, 120, 220]);
           }
         } catch {}
