@@ -137,6 +137,25 @@ Profit_Cal/
 - Framer Motion (动画)
 - Coinbase 设计风格
 
+## 前端环境要求
+
+- Node.js 20
+- npm 10 或兼容版本
+
+如果本地使用 `nvm`，可以在项目根目录执行：
+
+```bash
+nvm use
+```
+
+## 前端安装与构建
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
 ## 🌐 服务端口
 
 - **前端**: http://localhost:3000
