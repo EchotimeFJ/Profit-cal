@@ -65,7 +65,7 @@ export interface Alert {
   asset_type: string;
   currency: string;
   target_price: number;
-  alert_type: 'above' | 'below';
+  alert_type: 'above' | 'below' | 'reach';
   is_active: boolean;
   notification_method: string;
   triggered: boolean;

@@ -139,6 +139,12 @@ const getPositionTypeIconLabel = (type: string) => {
   return labels[type] || getPositionTypeLabel(type);
 };
 
+const getAlertActionLabel = (alertType: string) => {
+  if (alertType === 'above') return '高于';
+  if (alertType === 'below') return '低于';
+  return '到达';
+};
+
 export const Dashboard: React.FC = () => {
   const { user, updateUser } = useAuth();
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
@@ -151,13 +157,20 @@ export const Dashboard: React.FC = () => {
   const [sortMode, setSortMode] = useState<SortMode>('current_value');
   const [pnlDisplayMode, setPnlDisplayMode] = useState<PnlDisplayMode>('ORIGINAL');
   const [activeTab, setActiveTab] = useState<DashboardTab>('positions');
+  const [addingAsset, setAddingAsset] = useState<PortfolioAsset | null>(null);
   const [sellingAsset, setSellingAsset] = useState<PortfolioAsset | null>(null);
+  const [addPositionFormData, setAddPositionFormData] = useState({
+    buy_price: '',
+    quantity: '',
+    amount: '',
+  });
   const [sellFormData, setSellFormData] = useState({
     sell_price: '',
     quantity: '',
     amount: '',
   });
 
+  const addPositionCurrency = addingAsset?.currency || 'CNY';
   const sellCurrency = sellingAsset?.currency || 'CNY';
   const preferencePrefix = user?.id ? `profit-cal:${user.id}:dashboard:` : 'profit-cal:dashboard:';
 
@@ -317,6 +330,28 @@ export const Dashboard: React.FC = () => {
       ]);
     } catch (error: any) {
       alert(error.message || '卖出失败');
+    }
+  };
+
+  const handleAddPositionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addingAsset) return;
+
+    try {
+      await api.post(`/assets/${addingAsset.id}/add-position`, {
+        buy_price: parseFloat(addPositionFormData.buy_price),
+        quantity: addPositionFormData.quantity ? parseFloat(addPositionFormData.quantity) : undefined,
+        amount: addPositionFormData.amount ? parseFloat(addPositionFormData.amount) : undefined,
+      });
+      setAddingAsset(null);
+      setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
+      setActiveTab('history');
+      await Promise.all([
+        fetchPortfolio({ refresh: true }),
+        fetchHistory(),
+      ]);
+    } catch (error: any) {
+      alert(error.message || '加仓失败');
     }
   };
 
@@ -484,7 +519,7 @@ export const Dashboard: React.FC = () => {
                   >
                     <p style={{ fontSize: '16px', color: 'var(--color-ink)' }}>
                       <span style={{ fontWeight: '600' }}>{alert.name}</span>
-                      {' '}({alert.symbol}) 价格已{alert.alert_type === 'above' ? '高于' : '低于'}目标价{' '}
+                      {' '}({alert.symbol}) 价格已{getAlertActionLabel(alert.alert_type)}目标价{' '}
                       {formatCurrency(alert.target_price, alert.currency)}
                     </p>
                     <p style={{ fontSize: '14px', color: 'var(--color-muted)', marginTop: '6px' }}>
@@ -740,6 +775,10 @@ export const Dashboard: React.FC = () => {
                     asset={asset}
                     pnlDisplayMode={pnlDisplayMode}
                     pnlExchangeRates={portfolioData?.pnl_exchange_rates}
+                    onAddPosition={() => {
+                      setAddingAsset(asset);
+                      setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
+                    }}
                     onSell={() => {
                       setSellingAsset(asset);
                       setSellFormData({ sell_price: '', quantity: '', amount: '' });
@@ -815,6 +854,92 @@ export const Dashboard: React.FC = () => {
       </div>
 
       <AnimatePresence>
+        {addingAsset && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-0">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={() => setAddingAsset(null)}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: '100%', scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: '100%', scale: 0.95 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative w-full sm:max-w-lg bg-canvas rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
+                <div>
+                  <h2 className="text-title-md font-semibold text-ink">加仓资产</h2>
+                  <p className="text-body-sm text-muted mt-1">
+                    {addingAsset.name} · 当前持有 {formatAssetQuantity(addingAsset.quantity, addingAsset.asset_type)}
+                  </p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setAddingAsset(null)}>
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+
+              <form onSubmit={handleAddPositionSubmit} className="px-6 py-6 space-y-5">
+                <div>
+                  <label className="block text-caption font-medium text-ink mb-2">加仓价</label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    value={addPositionFormData.buy_price}
+                    onChange={(e) => setAddPositionFormData({ ...addPositionFormData, buy_price: e.target.value })}
+                    placeholder="加仓价格"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-caption font-medium text-ink mb-2">数量</label>
+                    <Input
+                      type="number"
+                      step="0.000001"
+                      value={addPositionFormData.quantity}
+                      onChange={(e) => setAddPositionFormData({ ...addPositionFormData, quantity: e.target.value, amount: '' })}
+                      placeholder="数量"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-caption font-medium text-ink mb-2">或金额</label>
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={addPositionFormData.amount}
+                        onChange={(e) => setAddPositionFormData({ ...addPositionFormData, amount: e.target.value, quantity: '' })}
+                        placeholder="加仓金额"
+                        className="pr-20"
+                      />
+                      <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-body-sm font-medium text-muted">
+                        {addPositionCurrency}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-surface-soft px-4 py-3 text-body-sm text-muted">
+                  填写数量或金额其中之一即可，提交后会按加权平均法刷新当前持仓成本价。
+                </div>
+
+                <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+                  <Button type="submit" className="flex-1">
+                    确认加仓
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={() => setAddingAsset(null)}>
+                    取消
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
         {sellingAsset && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-0">
             <motion.div
@@ -965,8 +1090,9 @@ const PositionCard: React.FC<{
   asset: PortfolioAsset;
   pnlDisplayMode: PnlDisplayMode;
   pnlExchangeRates?: Record<string, Record<string, number>>;
+  onAddPosition: () => void;
   onSell: () => void;
-}> = ({ asset, pnlDisplayMode, pnlExchangeRates, onSell }) => {
+}> = ({ asset, pnlDisplayMode, pnlExchangeRates, onAddPosition, onSell }) => {
   const displayedProfit = convertPnlValue(asset.profit, asset.currency, pnlDisplayMode, pnlExchangeRates);
   const displayedDailyProfit = convertPnlValue(asset.daily_profit, asset.currency, pnlDisplayMode, pnlExchangeRates);
   const totalProfitColor = ((displayedProfit?.value ?? 0) >= 0) ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
@@ -1036,8 +1162,11 @@ const PositionCard: React.FC<{
           </div>
         </div>
 
-        <div className="flex xl:w-[88px] xl:shrink-0">
-          <Button variant="outline" onClick={onSell} className="flex-1 px-3 xl:w-full">
+        <div className="flex gap-2 xl:w-[180px] xl:shrink-0">
+          <Button variant="secondary" onClick={onAddPosition} className="flex-1 px-3">
+            加仓
+          </Button>
+          <Button variant="outline" onClick={onSell} className="flex-1 px-3">
             <Banknote className="w-4 h-4 mr-1" />
             卖出
           </Button>
