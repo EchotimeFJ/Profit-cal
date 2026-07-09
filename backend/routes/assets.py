@@ -1,3 +1,5 @@
+import math
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
@@ -13,9 +15,19 @@ def _to_float(value, default=None):
     if value in [None, '']:
         return default
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         return default
+    if not math.isfinite(parsed):
+        return default
+    return parsed
+
+
+def _get_json_object():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return None
+    return data
 
 def _record_trade(asset, action, price, quantity, *, cost_basis=None, realized_profit=None, realized_profit_percent=None):
     return TradeRecord(
@@ -248,6 +260,55 @@ def sell_asset(asset_id):
         'realized_profit': realized_profit,
         'realized_profit_percent': realized_profit_percent,
         'asset_closed': asset_closed,
+    })
+
+
+@assets_bp.route('/<int:asset_id>/add-position', methods=['POST'])
+@jwt_required()
+def add_position(asset_id):
+    user_id = _current_user_id()
+    asset = Asset.query.filter_by(id=asset_id, user_id=user_id).first()
+
+    if not asset:
+        return jsonify({'error': '资产不存在'}), 404
+
+    data = _get_json_object()
+    if data is None:
+        return jsonify({'error': '请求体必须是 JSON 对象'}), 400
+    buy_price = _to_float(data.get('buy_price'))
+    amount = _to_float(data.get('amount'))
+    quantity = _to_float(data.get('quantity'))
+
+    if not buy_price or buy_price <= 0:
+        return jsonify({'error': '加仓价必须大于 0'}), 400
+
+    if not quantity and amount:
+        quantity = amount / buy_price
+
+    if not quantity or quantity <= 0:
+        return jsonify({'error': '请填写加仓数量或加仓金额'}), 400
+
+    original_quantity = asset.quantity
+    original_cost = asset.buy_price * original_quantity
+    added_cost = buy_price * quantity
+    new_quantity = original_quantity + quantity
+
+    asset.quantity = new_quantity
+    asset.buy_price = (original_cost + added_cost) / new_quantity
+
+    db.session.add(_record_trade(
+        asset,
+        'buy',
+        buy_price,
+        quantity,
+        cost_basis=added_cost,
+    ))
+    db.session.commit()
+
+    return jsonify({
+        'message': '加仓记录已保存',
+        'added_quantity': quantity,
+        'asset': asset.to_dict(),
     })
 
 @assets_bp.route('/<int:asset_id>', methods=['DELETE'])
