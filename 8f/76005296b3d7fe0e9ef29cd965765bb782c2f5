@@ -1,0 +1,66 @@
+docs/superpowers/plans/2026-07-09-stability-hardening.md
+  s_582fbf4ea07e2d::t_6af7919a7219fb 1-440 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a4f9180534c9b5635a0bfc6","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[1,440]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8f76005296b3d7fe0e9ef29cd965765bb782c2f5",
+  "prompts": {},
+  "sessions": {
+    "s_582fbf4ea07e2d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a4e17a3534c9b5635a0abd9",
+        "model": "gpt-5.4__dev"
+      },
+      "human_author": "fujia.111 <fujia.111@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "docs/superpowers/plans/2026-07-09-stability-hardening.md": [
+      {
+        "hash": "s_582fbf4ea07e2d::t_6af7919a7219fb",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              440
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a4f9180534c9b5635a0bfc6",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  440
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_582fbf4ea07e2d": {
+      "tool": "trae",
+      "conversation_id": "6a4e17a3534c9b5635a0abd9",
+      "session_id": "6a4e17a3534c9b5635a0abd9",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_582fbf4ea07e2d::t_6af7919a7219fb": {
+      "tool": "trae",
+      "conversation_id": "6a4e17a3534c9b5635a0abd9",
+      "session_id": "6a4e17a3534c9b5635a0abd9",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
