@@ -1,3 +1,5 @@
+import logging
+
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from sqlalchemy import func, or_
@@ -6,6 +8,7 @@ from models import User
 from services.password_crypto import decrypt_password, get_public_key_pem
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
+logger = logging.getLogger(__name__)
 
 def _current_user_id():
     return int(get_jwt_identity())
@@ -79,6 +82,7 @@ def register():
 
     db.session.add(user)
     db.session.commit()
+    logger.info("auth.register.success user_id=%s", user.id)
 
     access_token = create_access_token(identity=str(user.id))
 
@@ -104,9 +108,11 @@ def login():
     user = _find_user_by_identifier(identifier)
 
     if not user or not user.check_password(password):
+        logger.warning("auth.login.invalid_credentials identifier=%s", identifier)
         return jsonify({'error': '账号/邮箱或密码错误'}), 401
 
     access_token = create_access_token(identity=str(user.id))
+    logger.info("auth.login.success user_id=%s", user.id)
 
     return jsonify({
         'message': '登录成功',
@@ -184,6 +190,7 @@ def forgot_password():
 
     user.set_password(password)
     db.session.commit()
+    logger.info("auth.forgot_password.success user_id=%s", user.id)
 
     return jsonify({'message': '密码重置成功'})
 
@@ -218,5 +225,6 @@ def change_password():
 
     user.set_password(password)
     db.session.commit()
+    logger.info("auth.change_password.success user_id=%s", user.id)
 
     return jsonify({'message': '密码修改成功'})

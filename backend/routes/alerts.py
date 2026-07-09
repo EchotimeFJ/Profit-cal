@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 import math
 import re
 
@@ -10,6 +11,7 @@ from models import Alert, Asset, CustomAlert
 from services.currency_rules import ASSET_TYPE_CURRENCY, currency_for_asset_type
 
 alerts_bp = Blueprint('alerts', __name__, url_prefix='/api/alerts')
+logger = logging.getLogger(__name__)
 ALERT_TYPES = {'above', 'below', 'reach'}
 NOTIFICATION_METHODS = {'browser', 'popup', 'sound', 'vibrate', 'both'}
 
@@ -177,6 +179,7 @@ def create_alert():
         )
         db.session.add(alert)
         db.session.commit()
+        logger.info("alerts.create.success user_id=%s kind=%s alert_id=%s", user_id, "asset", alert.id)
         return jsonify({
             'message': '提醒已添加',
             'alert': _normalize_existing_alert(alert),
@@ -201,6 +204,7 @@ def create_alert():
     )
     db.session.add(alert)
     db.session.commit()
+    logger.info("alerts.create.success user_id=%s kind=%s alert_id=%s", user_id, "manual", alert.id)
 
     return jsonify({
         'message': '提醒已添加',
@@ -269,6 +273,7 @@ def update_alert(alert_id):
         alert.triggered_at = None
 
     db.session.commit()
+    logger.info("alerts.update.success user_id=%s kind=%s alert_id=%s", user_id, kind, alert.id)
 
     return jsonify({
         'message': '提醒已更新',
@@ -280,12 +285,13 @@ def update_alert(alert_id):
 @jwt_required()
 def delete_alert(alert_id):
     user_id = _current_user_id()
-    _, alert = _resolve_alert(alert_id, user_id)
+    kind, alert = _resolve_alert(alert_id, user_id)
 
     if not alert:
         return jsonify({'error': '提醒不存在'}), 404
 
     db.session.delete(alert)
     db.session.commit()
+    logger.info("alerts.delete.success user_id=%s kind=%s alert_id=%s", user_id, kind, alert.id)
 
     return jsonify({'message': '提醒已删除'})

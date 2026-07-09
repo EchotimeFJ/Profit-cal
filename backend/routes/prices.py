@@ -5,11 +5,13 @@ from models import Asset, Alert, CustomAlert, PortfolioSnapshot, User
 from services.price_fetcher import PriceFetcher
 from services.currency_rules import currency_for_asset_type
 from datetime import datetime
+import logging
 import math
 import json
 import re
 
 prices_bp = Blueprint('prices', __name__, url_prefix='/api/prices')
+logger = logging.getLogger(__name__)
 SUPPORTED_SETTLEMENT_CURRENCIES = {'CNY', 'HKD', 'USD'}
 SUPPORTED_PNL_DISPLAY_MODES = {'CNY', 'USD', 'ORIGINAL'}
 TYPE_SORT_ORDER = {
@@ -323,6 +325,7 @@ def check_alerts():
         if should_trigger:
             alert.triggered = True
             alert.triggered_at = datetime.utcnow()
+            logger.info("alerts.triggered user_id=%s kind=%s alert_id=%s", alert.user_id, "asset", alert.id)
             triggered_alerts.append({
                 'id': f'asset-{alert.id}',
                 'kind': 'asset',
@@ -353,6 +356,7 @@ def check_alerts():
         if should_trigger:
             alert.triggered = True
             alert.triggered_at = datetime.utcnow()
+            logger.info("alerts.triggered user_id=%s kind=%s alert_id=%s", alert.user_id, "manual", alert.id)
             triggered_alerts.append({
                 'id': f'custom-{alert.id}',
                 'kind': 'manual',

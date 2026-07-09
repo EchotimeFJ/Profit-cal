@@ -1,4 +1,5 @@
 import math
+import logging
 
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -7,6 +8,7 @@ from models import Asset, Alert, PortfolioSnapshot, TradeRecord
 from services.currency_rules import currency_for_asset_type
 
 assets_bp = Blueprint('assets', __name__, url_prefix='/api/assets')
+logger = logging.getLogger(__name__)
 
 def _current_user_id():
     return int(get_jwt_identity())
@@ -113,6 +115,7 @@ def create_asset():
     ))
     _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
+    logger.info("assets.create.success user_id=%s asset_id=%s", user_id, asset.id)
     
     return jsonify({
         'message': '资产已添加',
@@ -206,6 +209,7 @@ def update_asset(asset_id):
 
     _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
+    logger.info("assets.update.success user_id=%s asset_id=%s", user_id, asset.id)
     
     return jsonify({
         'message': '资产已更新',
@@ -265,6 +269,7 @@ def sell_asset(asset_id):
 
     _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
+    logger.info("assets.sell.success user_id=%s asset_id=%s closed=%s", user_id, asset.id, asset_closed)
 
     return jsonify({
         'message': '卖出记录已保存',
@@ -318,6 +323,7 @@ def add_position(asset_id):
     ))
     _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
+    logger.info("assets.add_position.success user_id=%s asset_id=%s", user_id, asset.id)
 
     return jsonify({
         'message': '加仓记录已保存',
@@ -338,5 +344,6 @@ def delete_asset(asset_id):
     db.session.delete(asset)
     _invalidate_portfolio_snapshots(user_id)
     db.session.commit()
+    logger.info("assets.delete.success user_id=%s asset_id=%s", user_id, asset_id)
     
     return jsonify({'message': '资产已删除'})
