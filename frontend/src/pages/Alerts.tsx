@@ -42,6 +42,12 @@ const notificationLabel = (value: string) => {
   return '弹窗 + 声音';
 };
 
+const alertTypeLabel = (value: 'above' | 'below' | 'reach') => {
+  if (value === 'above') return '超过';
+  if (value === 'below') return '低于';
+  return '到达';
+};
+
 export const Alerts: React.FC = () => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -56,7 +62,7 @@ export const Alerts: React.FC = () => {
     symbol: '',
     asset_type: 'a_stock',
     target_price: '',
-    alert_type: 'above',
+    alert_type: 'above' as 'above' | 'below' | 'reach',
     notification_method: 'browser',
   });
 
@@ -148,7 +154,7 @@ export const Alerts: React.FC = () => {
       symbol: '',
       asset_type: 'a_stock',
       target_price: '',
-      alert_type: 'above',
+      alert_type: 'above' as 'above' | 'below' | 'reach',
       notification_method: 'browser',
     });
     setMode('asset');
@@ -229,7 +235,7 @@ export const Alerts: React.FC = () => {
                           )}
                         </div>
                         <p className="text-body-sm text-muted break-all">
-                          {alert.symbol} · 当价格 {alert.alert_type === 'above' ? '超过' : '低于'} {formatCurrency(alert.target_price, alert.currency || 'USD')}
+                          {alert.symbol} · 当价格 {alertTypeLabel(alert.alert_type)} {formatCurrency(alert.target_price, alert.currency || 'USD')}
                         </p>
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-caption text-muted mt-2">
                           <span>{notificationLabel(alert.notification_method)}</span>
@@ -382,10 +388,11 @@ export const Alerts: React.FC = () => {
                     <label className="block text-caption font-medium text-ink mb-2">提醒类型</label>
                     <Select
                       value={formData.alert_type}
-                      onChange={(e) => setFormData({ ...formData, alert_type: e.target.value as 'above' | 'below' })}
+                      onChange={(e) => setFormData({ ...formData, alert_type: e.target.value as 'above' | 'below' | 'reach' })}
                     >
                       <option value="above">价格超过...</option>
                       <option value="below">价格低于...</option>
+                      <option value="reach">价格到达...</option>
                     </Select>
                   </div>
 
