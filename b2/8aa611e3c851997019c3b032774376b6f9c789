@@ -1,0 +1,66 @@
+docs/superpowers/specs/2026-07-09-stability-hardening-design.md
+  s_582fbf4ea07e2d::t_cab50473a64a23 1-354 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a4f904b534c9b5635a0bf7a","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[1,354]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b28aa611e3c851997019c3b032774376b6f9c789",
+  "prompts": {},
+  "sessions": {
+    "s_582fbf4ea07e2d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a4e17a3534c9b5635a0abd9",
+        "model": "gpt-5.4__dev"
+      },
+      "human_author": "fujia.111 <fujia.111@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "docs/superpowers/specs/2026-07-09-stability-hardening-design.md": [
+      {
+        "hash": "s_582fbf4ea07e2d::t_cab50473a64a23",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              354
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a4f904b534c9b5635a0bf7a",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  354
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_582fbf4ea07e2d": {
+      "tool": "trae",
+      "conversation_id": "6a4e17a3534c9b5635a0abd9",
+      "session_id": "6a4e17a3534c9b5635a0abd9",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_582fbf4ea07e2d::t_cab50473a64a23": {
+      "tool": "trae",
+      "conversation_id": "6a4e17a3534c9b5635a0abd9",
+      "session_id": "6a4e17a3534c9b5635a0abd9",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
