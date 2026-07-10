@@ -1102,8 +1102,8 @@ const PositionCard: React.FC<{
 
   return (
     <div className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5 sm:py-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-3">
-        <div className="flex min-w-0 items-center gap-4 xl:w-[240px] xl:shrink-0">
+      <div className="flex flex-col gap-4 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4 2xl:flex-nowrap">
+        <div className="flex min-w-0 items-center gap-4 xl:w-[220px] xl:flex-none">
           <div className="h-14 w-14 rounded-full bg-surface-soft flex items-center justify-center shrink-0">
             <span className="text-[14px] font-semibold text-ink">
               {getPositionTypeIconLabel(asset.asset_type)}
@@ -1116,7 +1116,7 @@ const PositionCard: React.FC<{
           </div>
         </div>
 
-        <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4 xl:min-w-[380px] xl:grid-cols-[0.9fr,1fr,1fr,1.25fr]">
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4 xl:min-w-[340px] xl:grid-cols-[0.9fr,1fr,1fr,1.25fr]">
           <PositionMetric
             label="仓位"
             value={formatAssetQuantity(asset.quantity, asset.asset_type)}
@@ -1136,7 +1136,7 @@ const PositionCard: React.FC<{
           />
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:w-[220px] xl:shrink-0">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:w-[210px] xl:flex-none">
           <div className="min-w-0 text-left sm:text-center xl:text-right">
             <p className="text-body-sm text-muted">总收益</p>
             <p className="font-number text-title-md mt-1" style={{ color: totalProfitColor }}>
@@ -1164,12 +1164,13 @@ const PositionCard: React.FC<{
           </div>
         </div>
 
-        <div className="flex gap-2 xl:w-[180px] xl:shrink-0">
-          <Button variant="secondary" onClick={onAddPosition} className="flex-1 px-3">
+        <div className="flex min-w-0 gap-2 xl:w-[200px] xl:flex-none">
+          <Button variant="secondary" onClick={onAddPosition} className="min-w-0 flex-1 px-3">
+            <Plus className="mr-1 h-4 w-4 shrink-0" />
             加仓
           </Button>
-          <Button variant="outline" onClick={onSell} className="flex-1 px-3">
-            <Banknote className="w-4 h-4 mr-1" />
+          <Button variant="outline" onClick={onSell} className="min-w-0 flex-1 px-3">
+            <Banknote className="mr-1 h-4 w-4 shrink-0" />
             卖出
           </Button>
         </div>
