@@ -135,6 +135,39 @@ export interface PortfolioHistoryData {
   points: PortfolioHistoryPoint[];
 }
 
+export interface ClosedPositionSummary {
+  closed_count: number;
+  total_realized_profit: number;
+  win_count: number;
+  loss_count: number;
+  win_rate: number | null;
+  average_realized_profit_percent: number | null;
+  average_holding_days: number | null;
+}
+
+export interface ClosedPositionItem {
+  asset_id: number;
+  asset_name: string;
+  symbol: string;
+  asset_type: string;
+  currency: string;
+  buy_quantity: number;
+  sell_quantity: number;
+  total_cost: number;
+  total_proceeds: number;
+  realized_profit: number;
+  realized_profit_percent: number | null;
+  first_buy_at: string;
+  closed_at: string;
+  holding_days: number;
+  records: TradeRecord[];
+}
+
+export interface ClosedPositionsData {
+  summary: ClosedPositionSummary;
+  positions: ClosedPositionItem[];
+}
+
 export interface AuthState {
   user: User | null;
   token: string | null;
