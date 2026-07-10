@@ -13,7 +13,7 @@ os.environ['JWT_SECRET_KEY'] = 'test-jwt-secret-for-portfolio-history'
 
 from app import app  # noqa: E402
 from db import db  # noqa: E402
-from models import PortfolioHistorySnapshot  # noqa: E402
+from models import PortfolioHistorySnapshot, User  # noqa: E402
 
 
 class PortfolioHistoryTestCase(unittest.TestCase):
@@ -76,6 +76,40 @@ class PortfolioHistoryTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['points'], [])
+
+    def test_snapshot_rejects_invalid_json_without_writing(self):
+        cases = [
+            {},
+            {'data': 'not-json', 'content_type': 'text/plain'},
+            {'data': '{"currency":', 'content_type': 'application/json'},
+            {'json': []},
+        ]
+
+        for kwargs in cases:
+            with self.subTest(kwargs=kwargs):
+                response = self.client.post('/api/portfolio/history/snapshot', headers=self.headers, **kwargs)
+
+                self.assertEqual(response.status_code, 400)
+                with app.app_context():
+                    self.assertEqual(PortfolioHistorySnapshot.query.count(), 0)
+
+    def test_history_returns_404_for_deleted_user(self):
+        with app.app_context():
+            user = User.query.filter_by(username='alice').one()
+            db.session.delete(user)
+            db.session.commit()
+
+        get_response = self.client.get('/api/portfolio/history', headers=self.headers)
+        post_response = self.client.post(
+            '/api/portfolio/history/snapshot',
+            json={'currency': 'CNY'},
+            headers=self.headers,
+        )
+
+        self.assertEqual(get_response.status_code, 404)
+        self.assertEqual(post_response.status_code, 404)
+        with app.app_context():
+            self.assertEqual(PortfolioHistorySnapshot.query.count(), 0)
 
 
 if __name__ == '__main__':

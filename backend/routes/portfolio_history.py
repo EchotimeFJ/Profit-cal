@@ -19,11 +19,18 @@ def _current_user():
     return db.session.get(User, _current_user_id())
 
 
+def _user_not_found_response():
+    return jsonify({'error': '用户不存在'}), 404
+
+
 @portfolio_history_bp.route('/history', methods=['GET'])
 @jwt_required()
 def get_portfolio_history():
     user_id = _current_user_id()
     user = db.session.get(User, user_id)
+    if user is None:
+        return _user_not_found_response()
+
     currency = normalize_history_currency(request.args.get('currency'), user)
     snapshots = (
         PortfolioHistorySnapshot.query
@@ -51,11 +58,17 @@ def get_portfolio_history():
 @jwt_required()
 def create_portfolio_history_snapshot():
     user = _current_user()
-    data = request.get_json(silent=True)
-    if data is not None and not isinstance(data, dict):
+    if user is None:
+        return _user_not_found_response()
+
+    if not request.is_json:
         return jsonify({'error': '请求体必须是 JSON 对象'}), 400
 
-    currency = normalize_history_currency((data or {}).get('currency'), user)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({'error': '请求体必须是 JSON 对象'}), 400
+
+    currency = normalize_history_currency(data.get('currency'), user)
     existing = PortfolioHistorySnapshot.query.filter_by(
         user_id=user.id,
         snapshot_date=date.today(),
