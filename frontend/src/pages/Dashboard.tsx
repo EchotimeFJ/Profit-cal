@@ -828,11 +828,13 @@ export const Dashboard: React.FC = () => {
 
             {activeTab === 'positions' && (
               <div className="flex w-full flex-col gap-3 xl:w-[620px]">
-                <Link to="/assets" className="w-full sm:w-auto xl:self-end">
-                  <button className="btn-primary w-full xl:w-auto" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', height: '38px', padding: '0 16px', fontSize: '14px' }}>
-                    <Plus style={{ width: '14px', height: '14px' }} />
-                    添加资产
-                  </button>
+                <Link
+                  to="/assets"
+                  className="btn-primary flex w-full items-center justify-center gap-[7px] px-4 text-[14px] sm:w-auto xl:self-end"
+                  style={{ height: '38px' }}
+                >
+                  <Plus style={{ width: '14px', height: '14px' }} />
+                  添加资产
                 </Link>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DashboardSelect

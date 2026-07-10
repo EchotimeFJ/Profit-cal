@@ -212,9 +212,9 @@ export const ClosedPositionAnalytics: React.FC = () => {
         <SummaryCard icon={<History className="h-4 w-4" />} label="已清仓资产" value={`${summary?.closed_count ?? 0}`} />
         <SummaryCard
           icon={<Wallet className="h-4 w-4" />}
-          label="总已实现收益"
-          value={formatNumber(summary?.total_realized_profit ?? 0)}
-          hint="无币种汇总，多币种未折算，仅作参考"
+          label="总已实现收益（原币种混合）"
+          value={`${formatNumber(summary?.total_realized_profit ?? 0)} 未折算`}
+          hint="多币种未换算为统一币种，仅用于清仓复盘参考"
         />
         <SummaryCard
           icon={<TrendingUp className="h-4 w-4" />}
