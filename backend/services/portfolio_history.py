@@ -4,14 +4,29 @@ from datetime import date
 from db import db
 from models import Asset, PortfolioHistorySnapshot, User
 from routes.prices import SUPPORTED_SETTLEMENT_CURRENCIES, _build_portfolio_payload
+from services.price_fetcher import PriceFetcher
 
 
 def _baseline_payload_from_assets(user_id, settlement_currency):
     assets = Asset.query.filter_by(user_id=user_id).all()
-    total_investment = sum((asset.buy_price or 0) * (asset.quantity or 0) for asset in assets)
+    total_investment = 0.0
+    converted_assets = []
+    for asset in assets:
+        amount = (asset.buy_price or 0) * (asset.quantity or 0)
+        rate = PriceFetcher.get_exchange_rate(asset.currency, settlement_currency)
+        converted_amount = amount * rate
+        total_investment += converted_amount
+        converted_assets.append({
+            'asset_id': asset.id,
+            'currency': asset.currency,
+            'amount': amount,
+            'exchange_rate': rate,
+            'converted_amount': converted_amount,
+        })
     payload = {
         'baseline_source': 'cost_basis',
         'asset_count': len(assets),
+        'converted_assets': converted_assets,
     }
     return {
         'total_investment': total_investment,
@@ -90,7 +105,7 @@ def migrate_existing_users_history():
         ).first()
         if exists:
             continue
-        upsert_history_snapshot(user, currency, use_live_prices=False)
+        upsert_history_snapshot(user, currency, use_live_prices=True)
         migrated += 1
     db.session.commit()
     return migrated
