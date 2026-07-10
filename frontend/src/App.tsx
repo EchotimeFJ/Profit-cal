@@ -7,6 +7,7 @@ import { ForgotPassword } from './pages/ForgotPassword';
 import { Dashboard } from './pages/Dashboard';
 import { Assets } from './pages/Assets';
 import { AssetDetail } from './pages/AssetDetail';
+import { ClosedPositionAnalytics } from './pages/ClosedPositionAnalytics';
 import { Alerts } from './pages/Alerts';
 import { Settings } from './pages/Settings';
 import { api } from './lib/api';
@@ -76,6 +77,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <AssetDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics/closed-positions"
+        element={
+          <ProtectedRoute>
+            <ClosedPositionAnalytics />
           </ProtectedRoute>
         }
       />

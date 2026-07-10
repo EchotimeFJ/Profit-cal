@@ -28,6 +28,7 @@ import {
   X,
   BellRing,
   ChevronDown,
+  BarChart3,
 } from 'lucide-react';
 
 const settlementCurrencies = [
@@ -536,7 +537,7 @@ export const Dashboard: React.FC = () => {
             欢迎回来，{user?.username}
           </p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
           <label htmlFor="dashboard-settlement-currency" className="flex items-center justify-between gap-3 text-sm font-medium text-muted">
             <span>结算货币</span>
             <div className="relative min-w-[150px]">
@@ -556,10 +557,17 @@ export const Dashboard: React.FC = () => {
           <div className="text-sm text-muted text-left sm:text-right">
             <div>更新于 {formatUpdatedAt(portfolioData?.updated_at)}</div>
           </div>
+          <Link
+            to="/analytics/closed-positions"
+            className="inline-flex w-full items-center justify-center rounded-pill bg-surface-strong px-5 py-3 text-button font-semibold text-ink transition-colors hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-coinbase-blue focus:ring-offset-2 sm:w-auto"
+          >
+            <BarChart3 className="mr-2 h-4 w-4 shrink-0" />
+            <span className="whitespace-nowrap">历史分析</span>
+          </Link>
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="btn-secondary"
+            className="btn-secondary w-full sm:w-auto"
             style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
             <RefreshCw
@@ -820,11 +828,13 @@ export const Dashboard: React.FC = () => {
 
             {activeTab === 'positions' && (
               <div className="flex w-full flex-col gap-3 xl:w-[620px]">
-                <Link to="/assets" className="w-full sm:w-auto xl:self-end">
-                  <button className="btn-primary w-full xl:w-auto" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', height: '38px', padding: '0 16px', fontSize: '14px' }}>
-                    <Plus style={{ width: '14px', height: '14px' }} />
-                    添加资产
-                  </button>
+                <Link
+                  to="/assets"
+                  className="btn-primary flex w-full items-center justify-center gap-[7px] px-4 text-[14px] sm:w-auto xl:self-end"
+                  style={{ height: '38px' }}
+                >
+                  <Plus style={{ width: '14px', height: '14px' }} />
+                  添加资产
                 </Link>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DashboardSelect

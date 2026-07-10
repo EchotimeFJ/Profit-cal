@@ -26,12 +26,14 @@ from routes.assets import assets_bp
 from routes.alerts import alerts_bp
 from routes.prices import prices_bp
 from routes.portfolio_history import portfolio_history_bp
+from routes.analytics import analytics_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(assets_bp)
 app.register_blueprint(alerts_bp)
 app.register_blueprint(prices_bp)
 app.register_blueprint(portfolio_history_bp)
+app.register_blueprint(analytics_bp)
 
 with app.app_context():
     db.create_all()
