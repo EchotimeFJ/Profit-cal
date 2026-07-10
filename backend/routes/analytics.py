@@ -43,6 +43,31 @@ def _record_to_dict(record):
     }
 
 
+def _split_closed_lifecycles(records):
+    lifecycles = []
+    current_records = []
+    buy_quantity = 0
+    sell_quantity = 0
+
+    for record in sorted(records, key=lambda item: (item.created_at, item.id or 0)):
+        if not current_records and record.action != 'buy':
+            continue
+
+        current_records.append(record)
+        if record.action == 'buy':
+            buy_quantity += record.quantity or 0
+        elif record.action == 'sell':
+            sell_quantity += record.quantity or 0
+
+        if buy_quantity > 0 and sell_quantity >= buy_quantity:
+            lifecycles.append(current_records)
+            current_records = []
+            buy_quantity = 0
+            sell_quantity = 0
+
+    return lifecycles
+
+
 def _build_closed_position(asset_id, records):
     buy_records = [record for record in records if record.action == 'buy']
     sell_records = [record for record in records if record.action == 'sell']
@@ -60,11 +85,19 @@ def _build_closed_position(asset_id, records):
     holding_days = max((closed_at.date() - first_buy_at.date()).days, 0)
 
     cost_basis_values = [record.cost_basis for record in sell_records if record.cost_basis is not None]
-    total_cost = _safe_sum(cost_basis_values) if cost_basis_values else _safe_sum(record.amount for record in buy_records)
+    total_cost = (
+        _safe_sum(cost_basis_values)
+        if len(cost_basis_values) == len(sell_records)
+        else _safe_sum(record.amount for record in buy_records)
+    )
     total_proceeds = _safe_sum(record.amount for record in sell_records)
 
     realized_values = [record.realized_profit for record in sell_records if record.realized_profit is not None]
-    realized_profit = _safe_sum(realized_values) if realized_values else total_proceeds - total_cost
+    realized_profit = (
+        _safe_sum(realized_values)
+        if len(realized_values) == len(sell_records)
+        else total_proceeds - total_cost
+    )
     realized_profit_percent = (realized_profit / total_cost * 100) if total_cost > 0 else None
 
     latest_record = ordered_records[-1]
@@ -123,12 +156,12 @@ def get_closed_positions():
     for record in records:
         records_by_asset[record.asset_id].append(record)
 
-    positions = [
-        position
-        for asset_id, grouped_records in records_by_asset.items()
-        for position in [_build_closed_position(asset_id, grouped_records)]
-        if position is not None
-    ]
+    positions = []
+    for asset_id, grouped_records in records_by_asset.items():
+        for lifecycle_records in _split_closed_lifecycles(grouped_records):
+            position = _build_closed_position(asset_id, lifecycle_records)
+            if position is not None:
+                positions.append(position)
     positions.sort(key=lambda item: item['closed_at'], reverse=True)
 
     return jsonify({

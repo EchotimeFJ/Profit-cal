@@ -140,6 +140,84 @@ class ClosedPositionAnalyticsTestCase(unittest.TestCase):
         self.assertEqual(position['holding_days'], 9)
         self.assertEqual([record['action'] for record in position['records']], ['buy', 'sell'])
 
+    def test_reused_asset_id_is_split_into_lifecycles(self):
+        headers = auth_headers(self.client)
+        with app.app_context():
+            user = User.query.filter_by(username='alice').one()
+            create_trade(user.id, 101, 'buy', quantity=1, price=100, days_ago=30, symbol='FIRST')
+            create_trade(
+                user.id,
+                101,
+                'sell',
+                quantity=1,
+                price=120,
+                cost_basis=100,
+                realized_profit=20,
+                days_ago=20,
+                symbol='FIRST',
+            )
+            create_trade(user.id, 101, 'buy', quantity=2, price=50, days_ago=10, symbol='SECOND')
+            create_trade(
+                user.id,
+                101,
+                'sell',
+                quantity=2,
+                price=80,
+                cost_basis=100,
+                realized_profit=60,
+                days_ago=1,
+                symbol='SECOND',
+            )
+            db.session.commit()
+
+        response = self.client.get('/api/analytics/closed-positions', headers=headers)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data['summary']['closed_count'], 2)
+        self.assertEqual(data['summary']['total_realized_profit'], 80)
+        self.assertEqual([item['symbol'] for item in data['positions']], ['SECOND', 'FIRST'])
+        self.assertEqual([item['buy_quantity'] for item in data['positions']], [2, 1])
+        self.assertEqual([len(item['records']) for item in data['positions']], [2, 2])
+
+    def test_mixed_missing_sell_metrics_fall_back_to_lifecycle_totals(self):
+        headers = auth_headers(self.client)
+        with app.app_context():
+            user = User.query.filter_by(username='alice').one()
+            create_trade(user.id, 101, 'buy', quantity=6, price=100, days_ago=10)
+            create_trade(user.id, 101, 'buy', quantity=4, price=100, days_ago=9)
+            create_trade(
+                user.id,
+                101,
+                'sell',
+                quantity=4,
+                price=125,
+                cost_basis=400,
+                realized_profit=100,
+                days_ago=2,
+            )
+            create_trade(
+                user.id,
+                101,
+                'sell',
+                quantity=6,
+                price=100,
+                amount=700,
+                days_ago=1,
+            )
+            db.session.commit()
+
+        response = self.client.get('/api/analytics/closed-positions', headers=headers)
+
+        self.assertEqual(response.status_code, 200)
+        position = response.get_json()['positions'][0]
+        self.assertEqual(position['buy_quantity'], 10)
+        self.assertEqual(position['sell_quantity'], 10)
+        self.assertEqual(position['total_cost'], 1000)
+        self.assertEqual(position['total_proceeds'], 1200)
+        self.assertEqual(position['realized_profit'], 200)
+        self.assertEqual(position['realized_profit_percent'], 20.0)
+
     def test_user_scope_and_descending_closed_order(self):
         alice_headers = auth_headers(self.client, 'alice', 'alice@example.com')
         bob_headers = auth_headers(self.client, 'bob', 'bob@example.com')
