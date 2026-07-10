@@ -1,9 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Banknote, Bell, Plus, RefreshCw, X } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import { ApiError, api } from '../lib/api';
 import {
   formatAssetPrice,
@@ -45,6 +46,31 @@ export const AssetDetail: React.FC = () => {
   const [showSellModal, setShowSellModal] = useState(false);
   const [addPositionFormData, setAddPositionFormData] = useState(initialTradeFormData);
   const [sellFormData, setSellFormData] = useState(initialTradeFormData);
+  const [addPositionSubmitting, setAddPositionSubmitting] = useState(false);
+  const [sellSubmitting, setSellSubmitting] = useState(false);
+  const addPositionDialogRef = useRef<HTMLDivElement>(null);
+  const sellDialogRef = useRef<HTMLDivElement>(null);
+  const addPositionTitleId = useId();
+  const addPositionPriceId = useId();
+  const addPositionQuantityId = useId();
+  const addPositionAmountId = useId();
+  const sellTitleId = useId();
+  const sellPriceId = useId();
+  const sellQuantityId = useId();
+  const sellAmountId = useId();
+
+  const closeAddPositionModal = useCallback(() => {
+    if (addPositionSubmitting) return;
+    setShowAddPositionModal(false);
+  }, [addPositionSubmitting]);
+
+  const closeSellModal = useCallback(() => {
+    if (sellSubmitting) return;
+    setShowSellModal(false);
+  }, [sellSubmitting]);
+
+  useDialogA11y(showAddPositionModal, closeAddPositionModal, addPositionDialogRef);
+  useDialogA11y(showSellModal, closeSellModal, sellDialogRef);
 
   const fetchDetail = useCallback(async () => {
     if (!id) {
@@ -98,9 +124,10 @@ export const AssetDetail: React.FC = () => {
 
   const handleAddPositionSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!data) return;
+    if (!data || addPositionSubmitting) return;
 
     try {
+      setAddPositionSubmitting(true);
       await api.post(`/assets/${data.asset.id}/add-position`, {
         buy_price: parseFloat(addPositionFormData.price),
         quantity: addPositionFormData.quantity ? parseFloat(addPositionFormData.quantity) : undefined,
@@ -111,14 +138,17 @@ export const AssetDetail: React.FC = () => {
       await fetchDetail();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : '加仓失败');
+    } finally {
+      setAddPositionSubmitting(false);
     }
   };
 
   const handleSellSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!data) return;
+    if (!data || sellSubmitting) return;
 
     try {
+      setSellSubmitting(true);
       await api.post(`/assets/${data.asset.id}/sell`, {
         sell_price: parseFloat(sellFormData.price),
         quantity: sellFormData.quantity ? parseFloat(sellFormData.quantity) : undefined,
@@ -129,6 +159,8 @@ export const AssetDetail: React.FC = () => {
       await fetchDetail();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : '卖出失败');
+    } finally {
+      setSellSubmitting(false);
     }
   };
 
@@ -302,9 +334,14 @@ export const AssetDetail: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setShowAddPositionModal(false)}
+              onClick={closeAddPositionModal}
             />
             <motion.div
+              ref={addPositionDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={addPositionTitleId}
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -313,20 +350,21 @@ export const AssetDetail: React.FC = () => {
             >
               <div className="flex items-center justify-between border-b border-hairline px-6 py-5">
                 <div>
-                  <h2 className="text-title-md font-semibold text-ink">加仓资产</h2>
+                  <h2 id={addPositionTitleId} className="text-title-md font-semibold text-ink">加仓资产</h2>
                   <p className="mt-1 text-body-sm text-muted">
                     {asset.name} · 当前持有 {formatAssetQuantity(asset.quantity, asset.asset_type)}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setShowAddPositionModal(false)}>
+                <Button variant="ghost" size="sm" onClick={closeAddPositionModal} disabled={addPositionSubmitting} aria-label="关闭加仓弹窗">
                   <X className="h-5 w-5" />
                 </Button>
               </div>
 
               <form onSubmit={handleAddPositionSubmit} className="space-y-5 px-6 py-6">
                 <div>
-                  <label className="mb-2 block text-caption font-medium text-ink">加仓价</label>
+                  <label htmlFor={addPositionPriceId} className="mb-2 block text-caption font-medium text-ink">加仓价</label>
                   <Input
+                    id={addPositionPriceId}
                     type="number"
                     step="0.001"
                     value={addPositionFormData.price}
@@ -338,8 +376,9 @@ export const AssetDetail: React.FC = () => {
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-caption font-medium text-ink">数量</label>
+                    <label htmlFor={addPositionQuantityId} className="mb-2 block text-caption font-medium text-ink">数量</label>
                     <Input
+                      id={addPositionQuantityId}
                       type="number"
                       step="0.000001"
                       value={addPositionFormData.quantity}
@@ -348,9 +387,10 @@ export const AssetDetail: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-caption font-medium text-ink">或金额</label>
+                    <label htmlFor={addPositionAmountId} className="mb-2 block text-caption font-medium text-ink">或金额</label>
                     <div className="relative">
                       <Input
+                        id={addPositionAmountId}
                         type="number"
                         step="0.01"
                         value={addPositionFormData.amount}
@@ -370,10 +410,10 @@ export const AssetDetail: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-                  <Button type="submit" className="flex-1">
-                    确认加仓
+                  <Button type="submit" disabled={addPositionSubmitting} className="flex-1">
+                    {addPositionSubmitting ? '提交中...' : '确认加仓'}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setShowAddPositionModal(false)}>
+                  <Button type="button" variant="secondary" onClick={closeAddPositionModal} disabled={addPositionSubmitting}>
                     取消
                   </Button>
                 </div>
@@ -389,9 +429,14 @@ export const AssetDetail: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setShowSellModal(false)}
+              onClick={closeSellModal}
             />
             <motion.div
+              ref={sellDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={sellTitleId}
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -400,20 +445,21 @@ export const AssetDetail: React.FC = () => {
             >
               <div className="flex items-center justify-between border-b border-hairline px-6 py-5">
                 <div>
-                  <h2 className="text-title-md font-semibold text-ink">卖出资产</h2>
+                  <h2 id={sellTitleId} className="text-title-md font-semibold text-ink">卖出资产</h2>
                   <p className="mt-1 text-body-sm text-muted">
                     {asset.name} · 当前持有 {formatAssetQuantity(asset.quantity, asset.asset_type)}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setShowSellModal(false)}>
+                <Button variant="ghost" size="sm" onClick={closeSellModal} disabled={sellSubmitting} aria-label="关闭卖出弹窗">
                   <X className="h-5 w-5" />
                 </Button>
               </div>
 
               <form onSubmit={handleSellSubmit} className="space-y-5 px-6 py-6">
                 <div>
-                  <label className="mb-2 block text-caption font-medium text-ink">卖出价</label>
+                  <label htmlFor={sellPriceId} className="mb-2 block text-caption font-medium text-ink">卖出价</label>
                   <Input
+                    id={sellPriceId}
                     type="number"
                     step="0.001"
                     value={sellFormData.price}
@@ -426,7 +472,7 @@ export const AssetDetail: React.FC = () => {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div>
                     <div className="mb-2 flex items-center justify-between">
-                      <label className="block text-caption font-medium text-ink">数量</label>
+                      <label htmlFor={sellQuantityId} className="block text-caption font-medium text-ink">数量</label>
                       <button
                         type="button"
                         className="text-caption font-medium text-coinbase-blue"
@@ -440,6 +486,7 @@ export const AssetDetail: React.FC = () => {
                       </button>
                     </div>
                     <Input
+                      id={sellQuantityId}
                       type="number"
                       step="0.000001"
                       value={sellFormData.quantity}
@@ -448,9 +495,10 @@ export const AssetDetail: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-caption font-medium text-ink">或金额</label>
+                    <label htmlFor={sellAmountId} className="mb-2 block text-caption font-medium text-ink">或金额</label>
                     <div className="relative">
                       <Input
+                        id={sellAmountId}
                         type="number"
                         step="0.01"
                         value={sellFormData.amount}
@@ -470,10 +518,10 @@ export const AssetDetail: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
-                  <Button type="submit" className="flex-1">
-                    确认卖出
+                  <Button type="submit" disabled={sellSubmitting} className="flex-1">
+                    {sellSubmitting ? '提交中...' : '确认卖出'}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setShowSellModal(false)}>
+                  <Button type="button" variant="secondary" onClick={closeSellModal} disabled={sellSubmitting}>
                     取消
                   </Button>
                 </div>
