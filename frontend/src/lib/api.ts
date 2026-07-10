@@ -1,5 +1,17 @@
 export const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
+export class ApiError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
 class ApiClient {
   private token: string | null = null;
 
@@ -32,7 +44,7 @@ class ApiClient {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Request failed');
+      throw new ApiError(data.error || 'Request failed', response.status, data);
     }
 
     return data;
