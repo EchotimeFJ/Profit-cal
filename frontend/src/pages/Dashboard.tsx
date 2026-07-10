@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
+import { PortfolioHistoryChart } from '../components/PortfolioHistoryChart';
 import {
   formatAssetPrice,
   formatAssetQuantity,
@@ -11,7 +12,7 @@ import {
   getAssetTypeLabel,
   formatQuantityValue,
 } from '../lib/utils';
-import { PortfolioData, PortfolioAsset, TradeRecord } from '../types';
+import { PortfolioData, PortfolioAsset, PortfolioHistoryData, TradeRecord } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -151,6 +152,7 @@ export const Dashboard: React.FC = () => {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
+  const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryData | null>(null);
   const [records, setRecords] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -220,6 +222,16 @@ export const Dashboard: React.FC = () => {
     setRecords(data.records);
   }, []);
 
+  const fetchPortfolioHistory = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ currency: settlementCurrency });
+      const data = await api.get<PortfolioHistoryData>(`/portfolio/history?${params.toString()}`);
+      setPortfolioHistory(data);
+    } catch (error) {
+      console.error('获取组合历史净值失败:', error);
+    }
+  }, [settlementCurrency]);
+
   const fetchPortfolio = useCallback(async (options?: { refresh?: boolean; silent?: boolean }) => {
     const params = new URLSearchParams({
       currency: settlementCurrency,
@@ -288,7 +300,7 @@ export const Dashboard: React.FC = () => {
 
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchPortfolio(), fetchHistory()]);
+      await Promise.all([fetchPortfolio(), fetchHistory(), fetchPortfolioHistory()]);
       if (!disposed) {
         fetchPortfolio({ refresh: true, silent: true });
         checkAlerts();
@@ -305,7 +317,7 @@ export const Dashboard: React.FC = () => {
       disposed = true;
       clearInterval(interval);
     };
-  }, [checkAlerts, fetchHistory, fetchPortfolio]);
+  }, [checkAlerts, fetchHistory, fetchPortfolio, fetchPortfolioHistory]);
 
   useEffect(() => {
     if (user?.preferred_currency && user.preferred_currency !== settlementCurrency) {
@@ -323,11 +335,17 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleRefresh = async () => {
-    await Promise.all([
-      fetchPortfolio({ refresh: true }),
-      fetchHistory(),
-      checkAlerts(),
-    ]);
+    try {
+      await fetchPortfolio({ refresh: true });
+      await api.post('/portfolio/history/snapshot', { currency: settlementCurrency });
+      await Promise.all([
+        fetchPortfolioHistory(),
+        fetchHistory(),
+        checkAlerts(),
+      ]);
+    } catch (error) {
+      console.error('刷新组合数据失败:', error);
+    }
   };
 
   const handleSellSubmit = async (e: React.FormEvent) => {
@@ -670,6 +688,13 @@ export const Dashboard: React.FC = () => {
             </motion.div>
           ))}
         </div>
+      )}
+
+      {portfolioHistory && (
+        <PortfolioHistoryChart
+          currency={portfolioHistory.currency}
+          points={portfolioHistory.points}
+        />
       )}
 
       <div className="card-light" style={{ padding: '24px' }}>
