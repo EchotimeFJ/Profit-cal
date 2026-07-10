@@ -1,0 +1,96 @@
+import json
+from datetime import date
+
+from db import db
+from models import Asset, PortfolioHistorySnapshot, User
+from routes.prices import SUPPORTED_SETTLEMENT_CURRENCIES, _build_portfolio_payload
+
+
+def _baseline_payload_from_assets(user_id, settlement_currency):
+    assets = Asset.query.filter_by(user_id=user_id).all()
+    total_investment = sum((asset.buy_price or 0) * (asset.quantity or 0) for asset in assets)
+    payload = {
+        'baseline_source': 'cost_basis',
+        'asset_count': len(assets),
+    }
+    return {
+        'total_investment': total_investment,
+        'total_current_value': total_investment,
+        'total_profit': 0.0,
+        'total_profit_percent': 0.0,
+        'daily_profit': 0.0,
+        'currency': settlement_currency,
+        'payload': payload,
+    }
+
+
+def normalize_history_currency(value, user=None):
+    currency = (value or getattr(user, 'preferred_currency', None) or 'CNY').upper()
+    if currency not in SUPPORTED_SETTLEMENT_CURRENCIES:
+        return 'CNY'
+    return currency
+
+
+def build_history_snapshot_payload(user, settlement_currency, *, use_live_prices=True):
+    assets = Asset.query.filter_by(user_id=user.id).all()
+    if use_live_prices and assets:
+        try:
+            portfolio_payload = _build_portfolio_payload(user, assets, settlement_currency, 'ORIGINAL')
+            summary = portfolio_payload['summary']
+            return {
+                'total_investment': summary['total_investment'],
+                'total_current_value': summary['total_current_value'],
+                'total_profit': summary['total_profit'],
+                'total_profit_percent': summary['total_profit_percent'],
+                'daily_profit': summary['daily_profit'],
+                'currency': settlement_currency,
+                'payload': {
+                    'baseline_source': 'live_portfolio',
+                    'asset_count': len(assets),
+                },
+            }
+        except Exception:
+            db.session.rollback()
+    return _baseline_payload_from_assets(user.id, settlement_currency)
+
+
+def upsert_history_snapshot(user, settlement_currency='CNY', snapshot_date=None, *, use_live_prices=True):
+    snapshot_date = snapshot_date or date.today()
+    settlement_currency = normalize_history_currency(settlement_currency, user)
+    data = build_history_snapshot_payload(user, settlement_currency, use_live_prices=use_live_prices)
+    snapshot = PortfolioHistorySnapshot.query.filter_by(
+        user_id=user.id,
+        snapshot_date=snapshot_date,
+        settlement_currency=settlement_currency,
+    ).first()
+    if snapshot is None:
+        snapshot = PortfolioHistorySnapshot(
+            user_id=user.id,
+            snapshot_date=snapshot_date,
+            settlement_currency=settlement_currency,
+        )
+        db.session.add(snapshot)
+
+    snapshot.total_investment = data['total_investment']
+    snapshot.total_current_value = data['total_current_value']
+    snapshot.total_profit = data['total_profit']
+    snapshot.total_profit_percent = data['total_profit_percent']
+    snapshot.daily_profit = data['daily_profit']
+    snapshot.payload = json.dumps(data['payload'], ensure_ascii=False)
+    return snapshot
+
+
+def migrate_existing_users_history():
+    migrated = 0
+    for user in User.query.all():
+        currency = normalize_history_currency(None, user)
+        exists = PortfolioHistorySnapshot.query.filter_by(
+            user_id=user.id,
+            settlement_currency=currency,
+        ).first()
+        if exists:
+            continue
+        upsert_history_snapshot(user, currency, use_live_prices=False)
+        migrated += 1
+    db.session.commit()
+    return migrated
