@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -19,6 +19,7 @@ import { api } from '../lib/api';
 import { Asset, TradeRecord } from '../types';
 import { formatAssetPrice, formatAssetQuantity, formatCurrency, formatQuantityValue, getAssetTypeLabel } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 
 interface SearchResult {
   symbol: string;
@@ -39,14 +40,16 @@ const assetTypeCurrency: Record<string, string> = {
 const getCurrencyForAssetType = (assetType: string) => assetTypeCurrency[assetType] || 'USD';
 
 const CurrencyAmountInput: React.FC<{
+  id: string;
   currency: string;
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
-}> = ({ currency, value, placeholder, onChange }) => {
+}> = ({ id, currency, value, placeholder, onChange }) => {
   return (
     <div className="relative">
       <Input
+        id={id}
         type="number"
         step="0.01"
         value={value}
@@ -72,6 +75,10 @@ export const Assets: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [sellSubmitting, setSellSubmitting] = useState(false);
+  const assetDialogRef = useRef<HTMLDivElement>(null);
+  const sellDialogRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -88,6 +95,33 @@ export const Assets: React.FC = () => {
     amount: '',
   });
   const sellCurrency = sellingAsset?.currency || formData.currency;
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      name: '',
+      symbol: '',
+      asset_type: 'us_stock',
+      buy_price: '',
+      quantity: '',
+      amount: '',
+      currency: 'USD',
+    });
+    setEditingAsset(null);
+    setSearchQuery('');
+    setSearchResults([]);
+  }, []);
+
+  const closeAssetModal = useCallback(() => {
+    setShowModal(false);
+    resetForm();
+  }, [resetForm]);
+
+  const closeSellModal = useCallback(() => {
+    setSellingAsset(null);
+  }, []);
+
+  useDialogA11y(showModal, closeAssetModal, assetDialogRef);
+  useDialogA11y(Boolean(sellingAsset), closeSellModal, sellDialogRef);
 
   const fetchAssets = async () => {
     try {
@@ -148,6 +182,8 @@ export const Assets: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
 
     try {
       const data = {
@@ -163,12 +199,13 @@ export const Assets: React.FC = () => {
         await api.post('/assets', data);
       }
 
-      setShowModal(false);
-      resetForm();
+      closeAssetModal();
       fetchAssets();
       fetchHistory();
     } catch (error: any) {
       alert(error.message || '操作失败');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -206,8 +243,10 @@ export const Assets: React.FC = () => {
 
   const handleSellSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (sellSubmitting) return;
 
     if (!sellingAsset) return;
+    setSellSubmitting(true);
 
     try {
       await api.post(`/assets/${sellingAsset.id}/sell`, {
@@ -216,29 +255,16 @@ export const Assets: React.FC = () => {
         amount: sellFormData.amount ? parseFloat(sellFormData.amount) : undefined,
       });
 
-      setSellingAsset(null);
+      closeSellModal();
       setSellFormData({ sell_price: '', quantity: '', amount: '' });
       fetchAssets();
       fetchHistory();
       setActiveTab('positions');
     } catch (error: any) {
       alert(error.message || '卖出失败');
+    } finally {
+      setSellSubmitting(false);
     }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: '',
-      symbol: '',
-      asset_type: 'us_stock',
-      buy_price: '',
-      quantity: '',
-      amount: '',
-      currency: 'USD',
-    });
-    setEditingAsset(null);
-    setSearchQuery('');
-    setSearchResults([]);
   };
 
   if (loading) {
@@ -418,12 +444,14 @@ export const Assets: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => {
-                setShowModal(false);
-                resetForm();
-              }}
+              onClick={closeAssetModal}
             />
             <motion.div
+              ref={assetDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="asset-dialog-title"
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -431,16 +459,13 @@ export const Assets: React.FC = () => {
               className="relative w-full sm:max-w-lg bg-canvas rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden"
             >
               <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
-                <h2 className="text-title-md font-semibold text-ink">
+                <h2 id="asset-dialog-title" className="text-title-md font-semibold text-ink">
                   {editingAsset ? '编辑资产' : '添加资产'}
                 </h2>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    setShowModal(false);
-                    resetForm();
-                  }}
+                  onClick={closeAssetModal}
                 >
                   <X className="w-5 h-5" />
                 </Button>
@@ -448,7 +473,7 @@ export const Assets: React.FC = () => {
 
               <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5 max-h-[80vh] overflow-y-auto">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">
+                  <label htmlFor="asset-search" className="block text-caption font-medium text-ink mb-2">
                     搜索资产
                   </label>
                   <div className="relative">
@@ -456,6 +481,7 @@ export const Assets: React.FC = () => {
                       <Search className="w-5 h-5" />
                     </div>
                     <Input
+                      id="asset-search"
                       value={searchQuery || formData.symbol}
                       onChange={handleSearch}
                       placeholder="输入代码、中文名或英文名"
@@ -501,10 +527,11 @@ export const Assets: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">
+                  <label htmlFor="asset-name" className="block text-caption font-medium text-ink mb-2">
                     名称
                   </label>
                   <Input
+                    id="asset-name"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="资产名称"
@@ -514,10 +541,11 @@ export const Assets: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">
+                    <label htmlFor="asset-type" className="block text-caption font-medium text-ink mb-2">
                       类型
                     </label>
                     <Select
+                      id="asset-type"
                       value={formData.asset_type}
                       onChange={(e) => {
                         const assetType = e.target.value;
@@ -537,10 +565,11 @@ export const Assets: React.FC = () => {
                     </Select>
                   </div>
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">
+                    <label htmlFor="asset-currency" className="block text-caption font-medium text-ink mb-2">
                       货币
                     </label>
                     <Select
+                      id="asset-currency"
                       value={formData.currency}
                       disabled
                     >
@@ -552,10 +581,11 @@ export const Assets: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">
+                  <label htmlFor="asset-buy-price" className="block text-caption font-medium text-ink mb-2">
                     买入价
                   </label>
                   <Input
+                    id="asset-buy-price"
                     type="number"
                     step="0.001"
                     value={formData.buy_price}
@@ -567,10 +597,11 @@ export const Assets: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">
+                    <label htmlFor="asset-quantity" className="block text-caption font-medium text-ink mb-2">
                       数量
                     </label>
                     <Input
+                      id="asset-quantity"
                       type="number"
                       step="0.000001"
                       value={formData.quantity}
@@ -579,10 +610,11 @@ export const Assets: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">
+                    <label htmlFor="asset-amount" className="block text-caption font-medium text-ink mb-2">
                       或金额
                     </label>
                     <CurrencyAmountInput
+                      id="asset-amount"
                       currency={formData.currency}
                       value={formData.amount}
                       onChange={(value) => setFormData({ ...formData, amount: value, quantity: '' })}
@@ -592,16 +624,13 @@ export const Assets: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-                  <Button type="submit" className="flex-1">
-                    {editingAsset ? '保存' : '添加'}
+                  <Button type="submit" disabled={submitting} className="flex-1">
+                    {submitting ? '提交中...' : editingAsset ? '保存' : '添加'}
                   </Button>
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => {
-                      setShowModal(false);
-                      resetForm();
-                    }}
+                    onClick={closeAssetModal}
                   >
                     取消
                   </Button>
@@ -618,9 +647,14 @@ export const Assets: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setSellingAsset(null)}
+              onClick={closeSellModal}
             />
             <motion.div
+              ref={sellDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="asset-sell-dialog-title"
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -629,22 +663,23 @@ export const Assets: React.FC = () => {
             >
               <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
                 <div>
-                  <h2 className="text-title-md font-semibold text-ink">卖出资产</h2>
+                  <h2 id="asset-sell-dialog-title" className="text-title-md font-semibold text-ink">卖出资产</h2>
                   <p className="text-body-sm text-muted mt-1">
                     {sellingAsset.name} · 当前持有 {formatAssetQuantity(sellingAsset.quantity, sellingAsset.asset_type)}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setSellingAsset(null)}>
+                <Button variant="ghost" size="sm" onClick={closeSellModal}>
                   <X className="w-5 h-5" />
                 </Button>
               </div>
 
               <form onSubmit={handleSellSubmit} className="px-6 py-6 space-y-5">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">
+                  <label htmlFor="asset-sell-price" className="block text-caption font-medium text-ink mb-2">
                     卖出价
                   </label>
                   <Input
+                    id="asset-sell-price"
                     type="number"
                     step="0.001"
                     value={sellFormData.sell_price}
@@ -657,7 +692,7 @@ export const Assets: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-caption font-medium text-ink">
+                      <label htmlFor="asset-sell-quantity" className="block text-caption font-medium text-ink">
                         数量
                       </label>
                       <button
@@ -673,6 +708,7 @@ export const Assets: React.FC = () => {
                       </button>
                     </div>
                     <Input
+                      id="asset-sell-quantity"
                       type="number"
                       step="0.000001"
                       value={sellFormData.quantity}
@@ -681,10 +717,11 @@ export const Assets: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">
+                    <label htmlFor="asset-sell-amount" className="block text-caption font-medium text-ink mb-2">
                       或金额
                     </label>
                     <CurrencyAmountInput
+                      id="asset-sell-amount"
                       currency={sellCurrency}
                       value={sellFormData.amount}
                       onChange={(value) => setSellFormData({ ...sellFormData, amount: value, quantity: '' })}
@@ -698,10 +735,10 @@ export const Assets: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-                  <Button type="submit" className="flex-1">
-                    确认卖出
+                  <Button type="submit" disabled={sellSubmitting} className="flex-1">
+                    {sellSubmitting ? '提交中...' : '确认卖出'}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setSellingAsset(null)}>
+                  <Button type="button" variant="secondary" onClick={closeSellModal}>
                     取消
                   </Button>
                 </div>

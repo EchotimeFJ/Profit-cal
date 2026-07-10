@@ -124,7 +124,7 @@ def login():
 @jwt_required()
 def get_current_user():
     user_id = _current_user_id()
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
 
     if not user:
         return jsonify({'error': '用户不存在'}), 404
@@ -135,7 +135,7 @@ def get_current_user():
 @jwt_required()
 def update_user():
     user_id = _current_user_id()
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
 
     if not user:
         return jsonify({'error': '用户不存在'}), 404
@@ -198,7 +198,7 @@ def forgot_password():
 @jwt_required()
 def change_password():
     user_id = _current_user_id()
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
 
     if not user:
         return jsonify({'error': '用户不存在'}), 404

@@ -26,11 +26,11 @@ jobs:
       - name: Run backend tests
         run: |
           . venv/bin/activate
-          python -m unittest test_auth_flows.py test_password_crypto.py test_password_hash_compat.py test_assets_add_position.py test_alert_reach.py
+          python -m unittest test_auth_flows.py test_password_crypto.py test_password_hash_compat.py test_assets_add_position.py test_alert_reach.py test_asset_detail.py test_portfolio_history.py test_schema_migration_compat.py
       - name: Run backend compile checks
         run: |
           . venv/bin/activate
-          python -m compileall routes/auth.py routes/assets.py routes/alerts.py routes/prices.py test_auth_flows.py test_password_crypto.py test_password_hash_compat.py test_assets_add_position.py test_alert_reach.py
+          python -m compileall routes/auth.py routes/assets.py routes/alerts.py routes/prices.py routes/portfolio_history.py services/portfolio_history.py scripts/migrate_portfolio_history.py test_auth_flows.py test_password_crypto.py test_password_hash_compat.py test_assets_add_position.py test_alert_reach.py test_asset_detail.py test_portfolio_history.py test_schema_migration_compat.py
 
   frontend-build:
     runs-on: ubuntu-latest

@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
+import { PortfolioHistoryChart } from '../components/PortfolioHistoryChart';
 import {
   formatAssetPrice,
   formatAssetQuantity,
@@ -11,10 +12,11 @@ import {
   getAssetTypeLabel,
   formatQuantityValue,
 } from '../lib/utils';
-import { PortfolioData, PortfolioAsset, TradeRecord } from '../types';
+import { PortfolioData, PortfolioAsset, PortfolioHistoryData, TradeRecord } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import {
   RefreshCw,
   Plus,
@@ -146,9 +148,20 @@ const getAlertActionLabel = (alertType: string) => {
   return '到达';
 };
 
+const normalizePortfolioHistoryData = (
+  data: PortfolioHistoryData,
+  fallbackCurrency: string
+): PortfolioHistoryData => ({
+  currency: data?.currency || fallbackCurrency,
+  points: Array.isArray(data?.points) ? data.points : [],
+});
+
 export const Dashboard: React.FC = () => {
   const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
+  const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryData | null>(null);
+  const [portfolioHistoryError, setPortfolioHistoryError] = useState('');
   const [records, setRecords] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -160,6 +173,10 @@ export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('positions');
   const [addingAsset, setAddingAsset] = useState<PortfolioAsset | null>(null);
   const [sellingAsset, setSellingAsset] = useState<PortfolioAsset | null>(null);
+  const [addPositionSubmitting, setAddPositionSubmitting] = useState(false);
+  const [sellSubmitting, setSellSubmitting] = useState(false);
+  const addPositionDialogRef = useRef<HTMLDivElement>(null);
+  const sellDialogRef = useRef<HTMLDivElement>(null);
   const [addPositionFormData, setAddPositionFormData] = useState({
     buy_price: '',
     quantity: '',
@@ -174,6 +191,17 @@ export const Dashboard: React.FC = () => {
   const addPositionCurrency = addingAsset?.currency || 'CNY';
   const sellCurrency = sellingAsset?.currency || 'CNY';
   const preferencePrefix = user?.id ? `profit-cal:${user.id}:dashboard:` : 'profit-cal:dashboard:';
+
+  const closeAddPositionModal = useCallback(() => {
+    setAddingAsset(null);
+  }, []);
+
+  const closeSellModal = useCallback(() => {
+    setSellingAsset(null);
+  }, []);
+
+  useDialogA11y(Boolean(addingAsset), closeAddPositionModal, addPositionDialogRef);
+  useDialogA11y(Boolean(sellingAsset), closeSellModal, sellDialogRef);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -203,6 +231,18 @@ export const Dashboard: React.FC = () => {
     setRecords(data.records);
   }, []);
 
+  const fetchPortfolioHistory = useCallback(async () => {
+    try {
+      setPortfolioHistoryError('');
+      const params = new URLSearchParams({ currency: settlementCurrency });
+      const data = await api.get<PortfolioHistoryData>(`/portfolio/history?${params.toString()}`);
+      setPortfolioHistory(normalizePortfolioHistoryData(data, settlementCurrency));
+    } catch (error) {
+      console.error('获取组合历史净值失败:', error);
+      setPortfolioHistoryError(error instanceof Error ? error.message : '历史净值加载失败');
+    }
+  }, [settlementCurrency]);
+
   const fetchPortfolio = useCallback(async (options?: { refresh?: boolean; silent?: boolean }) => {
     const params = new URLSearchParams({
       currency: settlementCurrency,
@@ -218,8 +258,13 @@ export const Dashboard: React.FC = () => {
     try {
       const data = await api.get<PortfolioData>(`/prices/portfolio?${params.toString()}`);
       setPortfolioData(data);
+      return true;
     } catch (error) {
       console.error('获取组合数据失败:', error);
+      if (options?.refresh && !options?.silent) {
+        throw error;
+      }
+      return false;
     } finally {
       setLoading(false);
       if (options?.refresh && !options?.silent) {
@@ -271,7 +316,7 @@ export const Dashboard: React.FC = () => {
 
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchPortfolio(), fetchHistory()]);
+      await Promise.all([fetchPortfolio(), fetchHistory(), fetchPortfolioHistory()]);
       if (!disposed) {
         fetchPortfolio({ refresh: true, silent: true });
         checkAlerts();
@@ -288,7 +333,7 @@ export const Dashboard: React.FC = () => {
       disposed = true;
       clearInterval(interval);
     };
-  }, [checkAlerts, fetchHistory, fetchPortfolio]);
+  }, [checkAlerts, fetchHistory, fetchPortfolio, fetchPortfolioHistory]);
 
   useEffect(() => {
     if (user?.preferred_currency && user.preferred_currency !== settlementCurrency) {
@@ -305,17 +350,51 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const handleMainTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const tabs: DashboardTab[] = ['positions', 'history'];
+    const currentIndex = tabs.indexOf(activeTab);
+    let nextTab: DashboardTab | null = null;
+
+    if (event.key === 'ArrowRight') {
+      nextTab = tabs[(currentIndex + 1) % tabs.length];
+    } else if (event.key === 'ArrowLeft') {
+      nextTab = tabs[(currentIndex - 1 + tabs.length) % tabs.length];
+    } else if (event.key === 'Home') {
+      nextTab = tabs[0];
+    } else if (event.key === 'End') {
+      nextTab = tabs[tabs.length - 1];
+    }
+
+    if (nextTab) {
+      event.preventDefault();
+      setActiveTab(nextTab);
+      requestAnimationFrame(() => {
+        document.getElementById(`dashboard-tab-${nextTab}`)?.focus();
+      });
+    }
+  };
+
   const handleRefresh = async () => {
-    await Promise.all([
-      fetchPortfolio({ refresh: true }),
-      fetchHistory(),
-      checkAlerts(),
-    ]);
+    try {
+      const refreshed = await fetchPortfolio({ refresh: true });
+      if (!refreshed) return;
+      await api.post('/portfolio/history/snapshot', { currency: settlementCurrency });
+      await Promise.all([
+        fetchPortfolioHistory(),
+        fetchHistory(),
+        checkAlerts(),
+      ]);
+    } catch (error) {
+      console.error('刷新组合数据失败:', error);
+      setPortfolioHistoryError(error instanceof Error ? error.message : '历史净值快照生成失败');
+    }
   };
 
   const handleSellSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (sellSubmitting) return;
     if (!sellingAsset) return;
+    setSellSubmitting(true);
 
     try {
       await api.post(`/assets/${sellingAsset.id}/sell`, {
@@ -323,7 +402,7 @@ export const Dashboard: React.FC = () => {
         quantity: sellFormData.quantity ? parseFloat(sellFormData.quantity) : undefined,
         amount: sellFormData.amount ? parseFloat(sellFormData.amount) : undefined,
       });
-      setSellingAsset(null);
+      closeSellModal();
       setSellFormData({ sell_price: '', quantity: '', amount: '' });
       setActiveTab('history');
       await Promise.all([
@@ -332,12 +411,16 @@ export const Dashboard: React.FC = () => {
       ]);
     } catch (error: any) {
       alert(error.message || '卖出失败');
+    } finally {
+      setSellSubmitting(false);
     }
   };
 
   const handleAddPositionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (addPositionSubmitting) return;
     if (!addingAsset) return;
+    setAddPositionSubmitting(true);
 
     try {
       await api.post(`/assets/${addingAsset.id}/add-position`, {
@@ -345,7 +428,7 @@ export const Dashboard: React.FC = () => {
         quantity: addPositionFormData.quantity ? parseFloat(addPositionFormData.quantity) : undefined,
         amount: addPositionFormData.amount ? parseFloat(addPositionFormData.amount) : undefined,
       });
-      setAddingAsset(null);
+      closeAddPositionModal();
       setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
       setActiveTab('history');
       await Promise.all([
@@ -354,6 +437,8 @@ export const Dashboard: React.FC = () => {
       ]);
     } catch (error: any) {
       alert(error.message || '加仓失败');
+    } finally {
+      setAddPositionSubmitting(false);
     }
   };
 
@@ -452,10 +537,11 @@ export const Dashboard: React.FC = () => {
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-          <label className="flex items-center justify-between gap-3 text-sm font-medium text-muted">
+          <label htmlFor="dashboard-settlement-currency" className="flex items-center justify-between gap-3 text-sm font-medium text-muted">
             <span>结算货币</span>
             <div className="relative min-w-[150px]">
               <Select
+                id="dashboard-settlement-currency"
                 value={settlementCurrency}
                 onChange={(e) => handleSettlementCurrencyChange(e.target.value)}
                 className="h-10 cursor-pointer appearance-none rounded-xl bg-canvas py-0 pl-3 pr-9 text-sm font-semibold shadow-none"
@@ -646,13 +732,28 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {(portfolioHistory || portfolioHistoryError) && (
+        <PortfolioHistoryChart
+          currency={portfolioHistory?.currency || settlementCurrency}
+          points={portfolioHistory?.points || []}
+          error={portfolioHistoryError}
+          onRetry={fetchPortfolioHistory}
+        />
+      )}
+
       <div className="card-light" style={{ padding: '24px' }}>
         <div className="flex flex-col gap-4 border-b border-hairline pb-5 mb-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 border-b border-hairline overflow-x-auto">
+              <div role="tablist" aria-label="资产视图" className="flex items-center gap-2 border-b border-hairline overflow-x-auto">
                 <button
+                  id="dashboard-tab-positions"
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'positions'}
+                  aria-controls="dashboard-panel-positions"
+                  tabIndex={activeTab === 'positions' ? 0 : -1}
+                  onKeyDown={handleMainTabKeyDown}
                   onClick={() => setActiveTab('positions')}
                   className={`px-4 py-3 text-nav-link border-b-2 transition-colors ${
                     activeTab === 'positions'
@@ -663,7 +764,13 @@ export const Dashboard: React.FC = () => {
                   持仓资产
                 </button>
                 <button
+                  id="dashboard-tab-history"
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'history'}
+                  aria-controls="dashboard-panel-history"
+                  tabIndex={activeTab === 'history' ? 0 : -1}
+                  onKeyDown={handleMainTabKeyDown}
                   onClick={() => setActiveTab('history')}
                   className={`px-4 py-3 text-nav-link border-b-2 transition-colors ${
                     activeTab === 'history'
@@ -676,7 +783,6 @@ export const Dashboard: React.FC = () => {
               </div>
               {activeTab === 'positions' && (
                 <div
-                  role="tablist"
                   aria-label="持仓资产类型筛选"
                   className="flex items-center gap-2 overflow-x-auto pb-1"
                 >
@@ -686,8 +792,7 @@ export const Dashboard: React.FC = () => {
                       <button
                         key={filter.value}
                         type="button"
-                        role="tab"
-                        aria-selected={isActive}
+                        aria-pressed={isActive}
                         onClick={() => setAssetFilter(filter.value)}
                         style={{
                           height: '34px',
@@ -743,115 +848,120 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {activeTab === 'positions' ? (
-          filteredPortfolio.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '44px 24px',
-              backgroundColor: 'var(--color-surface-soft)',
-              border: '1px solid var(--color-hairline)',
-              borderRadius: '24px'
-            }}>
-              <Wallet style={{
-                width: '44px',
-                height: '44px',
-                color: 'var(--color-muted)',
-                margin: '0 auto 16px'
-              }} />
-              <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
-                当前筛选下没有持仓
-              </p>
-              <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
-                可以切换筛选、调整排序，或继续添加资产。
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredPortfolio.map((asset, index) => (
-                <motion.div
-                  key={asset.id}
-                  initial={{ opacity: 0, y: 18 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.04 }}
-                >
-                  <PositionCard
-                    asset={asset}
-                    pnlDisplayMode={pnlDisplayMode}
-                    pnlExchangeRates={portfolioData?.pnl_exchange_rates}
-                    onAddPosition={() => {
-                      setAddingAsset(asset);
-                      setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
-                    }}
-                    onSell={() => {
-                      setSellingAsset(asset);
-                      setSellFormData({ sell_price: '', quantity: '', amount: '' });
-                    }}
-                  />
-                </motion.div>
-              ))}
-            </div>
-          )
+          <div id="dashboard-panel-positions" role="tabpanel" aria-labelledby="dashboard-tab-positions">
+            {filteredPortfolio.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '44px 24px',
+                backgroundColor: 'var(--color-surface-soft)',
+                border: '1px solid var(--color-hairline)',
+                borderRadius: '24px'
+              }}>
+                <Wallet style={{
+                  width: '44px',
+                  height: '44px',
+                  color: 'var(--color-muted)',
+                  margin: '0 auto 16px'
+                }} />
+                <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
+                  当前筛选下没有持仓
+                </p>
+                <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
+                  可以切换筛选、调整排序，或继续添加资产。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredPortfolio.map((asset, index) => (
+                  <motion.div
+                    key={asset.id}
+                    initial={{ opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.04 }}
+                  >
+                    <PositionCard
+                      asset={asset}
+                      pnlDisplayMode={pnlDisplayMode}
+                      pnlExchangeRates={portfolioData?.pnl_exchange_rates}
+                      onAddPosition={() => {
+                        setAddingAsset(asset);
+                        setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
+                      }}
+                      onSell={() => {
+                        setSellingAsset(asset);
+                        setSellFormData({ sell_price: '', quantity: '', amount: '' });
+                      }}
+                      onViewDetail={() => navigate(`/assets/${asset.id}/detail`)}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
-          records.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '44px 24px',
-              backgroundColor: 'var(--color-surface-soft)',
-              border: '1px solid var(--color-hairline)',
-              borderRadius: '24px'
-            }}>
-              <History style={{
-                width: '44px',
-                height: '44px',
-                color: 'var(--color-muted)',
-                margin: '0 auto 16px'
-              }} />
-              <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
-                还没有交易记录
-              </p>
-              <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
-                买入、卖出和清仓都会在这里保留历史。
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {records.map((record) => (
-                <div
-                  key={record.id}
-                  className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="text-title-sm font-semibold text-ink">{record.asset_name}</span>
-                        <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
-                          {record.action === 'buy' ? '买入' : '卖出'}
-                        </span>
-                        <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
-                          {getAssetTypeLabel(record.asset_type)}
-                        </span>
+          <div id="dashboard-panel-history" role="tabpanel" aria-labelledby="dashboard-tab-history">
+            {records.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '44px 24px',
+                backgroundColor: 'var(--color-surface-soft)',
+                border: '1px solid var(--color-hairline)',
+                borderRadius: '24px'
+              }}>
+                <History style={{
+                  width: '44px',
+                  height: '44px',
+                  color: 'var(--color-muted)',
+                  margin: '0 auto 16px'
+                }} />
+                <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
+                  还没有交易记录
+                </p>
+                <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
+                  买入、卖出和清仓都会在这里保留历史。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {records.map((record) => (
+                  <div
+                    key={record.id}
+                    className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="text-title-sm font-semibold text-ink">{record.asset_name}</span>
+                          <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                            {record.action === 'buy' ? '买入' : '卖出'}
+                          </span>
+                          <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                            {getAssetTypeLabel(record.asset_type)}
+                          </span>
+                        </div>
+                        <p className="text-body-sm text-muted break-all">
+                          {record.symbol} · {new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}
+                        </p>
+                        <p className="text-body-sm text-muted mt-2">
+                          {formatAssetQuantity(record.quantity, record.asset_type)} · 成交价 {formatAssetPrice(record.price, record.currency, record.asset_type)} · 金额 {formatCurrency(record.amount, record.currency)}
+                        </p>
                       </div>
-                      <p className="text-body-sm text-muted break-all">
-                        {record.symbol} · {new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}
-                      </p>
-                      <p className="text-body-sm text-muted mt-2">
-                        {formatAssetQuantity(record.quantity, record.asset_type)} · 成交价 {formatAssetPrice(record.price, record.currency, record.asset_type)} · 金额 {formatCurrency(record.amount, record.currency)}
-                      </p>
+                      {record.action === 'sell' && (
+                        <div className="text-left sm:text-right">
+                          <p className={`font-number text-title-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
+                            {formatCurrency(record.realized_profit || 0, record.currency)}
+                          </p>
+                          <p className={`font-number text-body-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
+                            {record.realized_profit_percent !== null ? `${record.realized_profit_percent >= 0 ? '+' : ''}${record.realized_profit_percent.toFixed(2)}%` : '--'}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    {record.action === 'sell' && (
-                      <div className="text-left sm:text-right">
-                        <p className={`font-number text-title-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
-                          {formatCurrency(record.realized_profit || 0, record.currency)}
-                        </p>
-                        <p className={`font-number text-body-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
-                          {record.realized_profit_percent !== null ? `${record.realized_profit_percent >= 0 ? '+' : ''}${record.realized_profit_percent.toFixed(2)}%` : '--'}
-                        </p>
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
-            </div>
-          )
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -863,9 +973,14 @@ export const Dashboard: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setAddingAsset(null)}
+              onClick={closeAddPositionModal}
             />
             <motion.div
+              ref={addPositionDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dashboard-add-position-title"
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -874,20 +989,21 @@ export const Dashboard: React.FC = () => {
             >
               <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
                 <div>
-                  <h2 className="text-title-md font-semibold text-ink">加仓资产</h2>
+                  <h2 id="dashboard-add-position-title" className="text-title-md font-semibold text-ink">加仓资产</h2>
                   <p className="text-body-sm text-muted mt-1">
                     {addingAsset.name} · 当前持有 {formatAssetQuantity(addingAsset.quantity, addingAsset.asset_type)}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setAddingAsset(null)}>
+                <Button variant="ghost" size="sm" onClick={closeAddPositionModal}>
                   <X className="w-5 h-5" />
                 </Button>
               </div>
 
               <form onSubmit={handleAddPositionSubmit} className="px-6 py-6 space-y-5">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">加仓价</label>
+                  <label htmlFor="dashboard-add-buy-price" className="block text-caption font-medium text-ink mb-2">加仓价</label>
                   <Input
+                    id="dashboard-add-buy-price"
                     type="number"
                     step="0.001"
                     value={addPositionFormData.buy_price}
@@ -899,8 +1015,9 @@ export const Dashboard: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">数量</label>
+                    <label htmlFor="dashboard-add-quantity" className="block text-caption font-medium text-ink mb-2">数量</label>
                     <Input
+                      id="dashboard-add-quantity"
                       type="number"
                       step="0.000001"
                       value={addPositionFormData.quantity}
@@ -909,9 +1026,10 @@ export const Dashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">或金额</label>
+                    <label htmlFor="dashboard-add-amount" className="block text-caption font-medium text-ink mb-2">或金额</label>
                     <div className="relative">
                       <Input
+                        id="dashboard-add-amount"
                         type="number"
                         step="0.01"
                         value={addPositionFormData.amount}
@@ -931,10 +1049,10 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-                  <Button type="submit" className="flex-1">
-                    确认加仓
+                  <Button type="submit" disabled={addPositionSubmitting} className="flex-1">
+                    {addPositionSubmitting ? '提交中...' : '确认加仓'}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setAddingAsset(null)}>
+                  <Button type="button" variant="secondary" onClick={closeAddPositionModal}>
                     取消
                   </Button>
                 </div>
@@ -949,9 +1067,14 @@ export const Dashboard: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setSellingAsset(null)}
+              onClick={closeSellModal}
             />
             <motion.div
+              ref={sellDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dashboard-sell-title"
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -960,20 +1083,21 @@ export const Dashboard: React.FC = () => {
             >
               <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
                 <div>
-                  <h2 className="text-title-md font-semibold text-ink">卖出资产</h2>
+                  <h2 id="dashboard-sell-title" className="text-title-md font-semibold text-ink">卖出资产</h2>
                   <p className="text-body-sm text-muted mt-1">
                     {sellingAsset.name} · 当前持有 {formatAssetQuantity(sellingAsset.quantity, sellingAsset.asset_type)}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setSellingAsset(null)}>
+                <Button variant="ghost" size="sm" onClick={closeSellModal}>
                   <X className="w-5 h-5" />
                 </Button>
               </div>
 
               <form onSubmit={handleSellSubmit} className="px-6 py-6 space-y-5">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">卖出价</label>
+                  <label htmlFor="dashboard-sell-price" className="block text-caption font-medium text-ink mb-2">卖出价</label>
                   <Input
+                    id="dashboard-sell-price"
                     type="number"
                     step="0.001"
                     value={sellFormData.sell_price}
@@ -986,7 +1110,7 @@ export const Dashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-caption font-medium text-ink">数量</label>
+                      <label htmlFor="dashboard-sell-quantity" className="block text-caption font-medium text-ink">数量</label>
                       <button
                         type="button"
                         className="text-caption font-medium text-coinbase-blue"
@@ -1000,6 +1124,7 @@ export const Dashboard: React.FC = () => {
                       </button>
                     </div>
                     <Input
+                      id="dashboard-sell-quantity"
                       type="number"
                       step="0.000001"
                       value={sellFormData.quantity}
@@ -1008,9 +1133,10 @@ export const Dashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">或金额</label>
+                    <label htmlFor="dashboard-sell-amount" className="block text-caption font-medium text-ink mb-2">或金额</label>
                     <div className="relative">
                       <Input
+                        id="dashboard-sell-amount"
                         type="number"
                         step="0.01"
                         value={sellFormData.amount}
@@ -1030,10 +1156,10 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-                  <Button type="submit" className="flex-1">
-                    确认卖出
+                  <Button type="submit" disabled={sellSubmitting} className="flex-1">
+                    {sellSubmitting ? '提交中...' : '确认卖出'}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setSellingAsset(null)}>
+                  <Button type="button" variant="secondary" onClick={closeSellModal}>
                     取消
                   </Button>
                 </div>
@@ -1064,14 +1190,17 @@ function DashboardSelect<T extends string>({
   options: readonly DashboardSelectOption<T>[];
   onChange: (value: T) => void;
 }) {
+  const selectId = useId();
+
   return (
-    <label className="group flex items-center justify-between gap-2 rounded-2xl border border-hairline bg-surface-soft px-3 py-2 transition-colors">
+    <label htmlFor={selectId} className="group flex items-center justify-between gap-2 rounded-2xl border border-hairline bg-surface-soft px-3 py-2 transition-colors">
       <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-muted">
         {icon}
         {label}
       </span>
       <div className="relative min-w-0 flex-1">
         <Select
+          id={selectId}
           value={value}
           onChange={(event) => onChange(event.target.value as T)}
           className="h-9 cursor-pointer appearance-none rounded-xl bg-canvas py-0 pl-3 pr-8 text-[13px] font-semibold shadow-none"
@@ -1094,7 +1223,8 @@ const PositionCard: React.FC<{
   pnlExchangeRates?: Record<string, Record<string, number>>;
   onAddPosition: () => void;
   onSell: () => void;
-}> = ({ asset, pnlDisplayMode, pnlExchangeRates, onAddPosition, onSell }) => {
+  onViewDetail: () => void;
+}> = ({ asset, pnlDisplayMode, pnlExchangeRates, onAddPosition, onSell, onViewDetail }) => {
   const displayedProfit = convertPnlValue(asset.profit, asset.currency, pnlDisplayMode, pnlExchangeRates);
   const displayedDailyProfit = convertPnlValue(asset.daily_profit, asset.currency, pnlDisplayMode, pnlExchangeRates);
   const totalProfitColor = ((displayedProfit?.value ?? 0) >= 0) ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
@@ -1164,7 +1294,10 @@ const PositionCard: React.FC<{
           </div>
         </div>
 
-        <div className="flex min-w-0 gap-2 xl:w-[200px] xl:flex-none">
+        <div className="flex min-w-0 gap-2 xl:w-[280px] xl:flex-none">
+          <Button variant="ghost" onClick={onViewDetail} className="min-w-0 flex-1 px-3">
+            详情
+          </Button>
           <Button variant="secondary" onClick={onAddPosition} className="min-w-0 flex-1 px-3">
             <Plus className="mr-1 h-4 w-4 shrink-0" />
             加仓

@@ -254,7 +254,7 @@ def _build_portfolio_payload(user, assets, target_currency, pnl_display_mode):
 @jwt_required()
 def get_portfolio_prices():
     user_id = _current_user_id()
-    user = User.query.get(user_id)
+    user = db.session.get(User, user_id)
     assets = Asset.query.filter_by(user_id=user_id).all()
 
     target_currency = (request.args.get('currency') or user.preferred_currency or 'CNY').upper()

@@ -13,6 +13,8 @@ export const Login: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setError('');
     setLoading(true);
 
@@ -50,8 +52,9 @@ export const Login: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-5 sm:gap-6">
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">账号或绑定邮箱</label>
+              <label htmlFor="login-identifier" className="block text-sm font-medium text-on-dark mb-2">账号或绑定邮箱</label>
               <input
+                id="login-identifier"
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
@@ -63,8 +66,9 @@ export const Login: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">密码</label>
+              <label htmlFor="login-password" className="block text-sm font-medium text-on-dark mb-2">密码</label>
               <input
+                id="login-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}

@@ -15,6 +15,8 @@ export const Register: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setError('');
 
     if (password !== confirmPassword) {
@@ -54,10 +56,11 @@ export const Register: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">
+              <label htmlFor="register-username" className="block text-sm font-medium text-on-dark mb-2">
                 登录账号
               </label>
               <input
+                id="register-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -68,10 +71,11 @@ export const Register: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">
+              <label htmlFor="register-email" className="block text-sm font-medium text-on-dark mb-2">
                 绑定邮箱
               </label>
               <input
+                id="register-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -85,10 +89,11 @@ export const Register: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">
+              <label htmlFor="register-password" className="block text-sm font-medium text-on-dark mb-2">
                 密码
               </label>
               <input
+                id="register-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -99,10 +104,11 @@ export const Register: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">
+              <label htmlFor="register-confirm-password" className="block text-sm font-medium text-on-dark mb-2">
                 确认密码
               </label>
               <input
+                id="register-confirm-password"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}

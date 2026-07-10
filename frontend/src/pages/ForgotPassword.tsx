@@ -15,6 +15,8 @@ export const ForgotPassword: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setMessage('');
     setIsSuccess(false);
 
@@ -77,10 +79,11 @@ export const ForgotPassword: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5 sm:space-y-6">
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">
+              <label htmlFor="forgot-email" className="block text-sm font-medium text-on-dark mb-2">
                 绑定邮箱
               </label>
               <input
+                id="forgot-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -94,10 +97,11 @@ export const ForgotPassword: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">
+              <label htmlFor="forgot-password" className="block text-sm font-medium text-on-dark mb-2">
                 新密码
               </label>
               <input
+                id="forgot-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -108,10 +112,11 @@ export const ForgotPassword: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-on-dark mb-2">
+              <label htmlFor="forgot-confirm-password" className="block text-sm font-medium text-on-dark mb-2">
                 确认新密码
               </label>
               <input
+                id="forgot-confirm-password"
                 type="password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}

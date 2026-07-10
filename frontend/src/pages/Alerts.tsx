@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -18,6 +18,7 @@ import { api } from '../lib/api';
 import { Alert, Asset } from '../types';
 import { formatCurrency, getAssetTypeLabel } from '../lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 
 type AlertMode = 'asset' | 'manual';
 
@@ -57,6 +58,8 @@ export const Alerts: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [editingAlert, setEditingAlert] = useState<Alert | null>(null);
   const [mode, setMode] = useState<AlertMode>('asset');
+  const [submitting, setSubmitting] = useState(false);
+  const alertDialogRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
     asset_id: '',
@@ -68,6 +71,27 @@ export const Alerts: React.FC = () => {
     notification_method: 'browser',
   });
   const isEditing = Boolean(editingAlert);
+
+  const resetForm = useCallback(() => {
+    setFormData({
+      asset_id: '',
+      name: '',
+      symbol: '',
+      asset_type: 'a_stock',
+      target_price: '',
+      alert_type: 'above',
+      notification_method: 'browser',
+    });
+    setMode('asset');
+    setEditingAlert(null);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setShowModal(false);
+    resetForm();
+  }, [resetForm]);
+
+  useDialogA11y(showModal, closeModal, alertDialogRef);
 
   const fetchData = async () => {
     try {
@@ -90,6 +114,8 @@ export const Alerts: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
 
     try {
       const baseData = {
@@ -116,11 +142,12 @@ export const Alerts: React.FC = () => {
         await api.post('/alerts', payload);
       }
 
-      setShowModal(false);
-      resetForm();
+      closeModal();
       fetchData();
     } catch (error: any) {
       alert(error.message || '操作失败');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -148,20 +175,6 @@ export const Alerts: React.FC = () => {
         console.error('删除提醒失败:', error);
       }
     }
-  };
-
-  const resetForm = () => {
-    setFormData({
-      asset_id: '',
-      name: '',
-      symbol: '',
-      asset_type: 'a_stock',
-      target_price: '',
-      alert_type: 'above' as 'above' | 'below' | 'reach',
-      notification_method: 'browser',
-    });
-    setMode('asset');
-    setEditingAlert(null);
   };
 
   if (loading) {
@@ -281,12 +294,14 @@ export const Alerts: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => {
-                setShowModal(false);
-                resetForm();
-              }}
+              onClick={closeModal}
             />
             <motion.div
+              ref={alertDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="alert-dialog-title"
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -294,16 +309,13 @@ export const Alerts: React.FC = () => {
               className="relative w-full sm:max-w-lg bg-canvas rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden"
             >
               <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
-                <h2 className="text-title-md font-semibold text-ink">
+                <h2 id="alert-dialog-title" className="text-title-md font-semibold text-ink">
                   {editingAlert ? '编辑提醒' : '添加提醒'}
                 </h2>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => {
-                    setShowModal(false);
-                    resetForm();
-                  }}
+                  onClick={closeModal}
                 >
                   <X className="w-5 h-5" />
                 </Button>
@@ -344,8 +356,9 @@ export const Alerts: React.FC = () => {
               <form onSubmit={handleSubmit} className="px-6 py-6 space-y-5 max-h-[80vh] overflow-y-auto">
                 {mode === 'asset' ? (
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">选择持仓</label>
+                    <label htmlFor="alert-asset-id" className="block text-caption font-medium text-ink mb-2">选择持仓</label>
                     <Select
+                      id="alert-asset-id"
                       value={formData.asset_id}
                       onChange={(e) => setFormData({ ...formData, asset_id: e.target.value })}
                       disabled={isEditing}
@@ -366,16 +379,18 @@ export const Alerts: React.FC = () => {
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-caption font-medium text-ink mb-2">名称</label>
+                        <label htmlFor="alert-name" className="block text-caption font-medium text-ink mb-2">名称</label>
                         <Input
+                          id="alert-name"
                           value={formData.name}
                           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                           placeholder="可选，不填则使用代码"
                         />
                       </div>
                       <div>
-                        <label className="block text-caption font-medium text-ink mb-2">类型</label>
+                        <label htmlFor="alert-asset-type" className="block text-caption font-medium text-ink mb-2">类型</label>
                         <Select
+                          id="alert-asset-type"
                           value={formData.asset_type}
                           onChange={(e) => setFormData({ ...formData, asset_type: e.target.value })}
                         >
@@ -388,8 +403,9 @@ export const Alerts: React.FC = () => {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-caption font-medium text-ink mb-2">代码 / 品种</label>
+                      <label htmlFor="alert-symbol" className="block text-caption font-medium text-ink mb-2">代码 / 品种</label>
                       <Input
+                        id="alert-symbol"
                         value={formData.symbol}
                         onChange={(e) => setFormData({ ...formData, symbol: e.target.value })}
                         placeholder="例如 600519、0700、BTC、GC=F"
@@ -401,8 +417,9 @@ export const Alerts: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">提醒类型</label>
+                    <label htmlFor="alert-type" className="block text-caption font-medium text-ink mb-2">提醒类型</label>
                     <Select
+                      id="alert-type"
                       value={formData.alert_type}
                       onChange={(e) => setFormData({ ...formData, alert_type: e.target.value as 'above' | 'below' | 'reach' })}
                     >
@@ -413,8 +430,9 @@ export const Alerts: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">目标价格</label>
+                    <label htmlFor="alert-target-price" className="block text-caption font-medium text-ink mb-2">目标价格</label>
                     <Input
+                      id="alert-target-price"
                       type="number"
                       step="0.01"
                       value={formData.target_price}
@@ -426,8 +444,9 @@ export const Alerts: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">提醒方式</label>
+                  <label htmlFor="alert-notification-method" className="block text-caption font-medium text-ink mb-2">提醒方式</label>
                   <Select
+                    id="alert-notification-method"
                     value={formData.notification_method}
                     onChange={(e) => setFormData({ ...formData, notification_method: e.target.value })}
                   >
@@ -444,16 +463,13 @@ export const Alerts: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-                  <Button type="submit" className="flex-1">
-                    {editingAlert ? '保存' : '添加'}
+                  <Button type="submit" disabled={submitting} className="flex-1">
+                    {submitting ? '提交中...' : editingAlert ? '保存' : '添加'}
                   </Button>
                   <Button
                     type="button"
                     variant="secondary"
-                    onClick={() => {
-                      setShowModal(false);
-                      resetForm();
-                    }}
+                    onClick={closeModal}
                   >
                     取消
                   </Button>

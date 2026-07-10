@@ -6,6 +6,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from db import db
 from models import Asset, Alert, PortfolioSnapshot, TradeRecord
 from services.currency_rules import currency_for_asset_type
+from services.price_fetcher import PriceFetcher
 
 assets_bp = Blueprint('assets', __name__, url_prefix='/api/assets')
 logger = logging.getLogger(__name__)
@@ -51,6 +52,102 @@ def _record_trade(asset, action, price, quantity, *, cost_basis=None, realized_p
         realized_profit=realized_profit,
         realized_profit_percent=realized_profit_percent,
     )
+
+
+def _safe_price_number(value):
+    if value in [None, '']:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
+
+
+def _asset_detail_price_payload(asset, raw_price_data, error=None):
+    price_payload = {
+        'current_price': None,
+        'previous_close': None,
+        'currency': asset.currency,
+        'source': None,
+        'quote_time': None,
+        'error': error,
+    }
+    if not isinstance(raw_price_data, dict):
+        return None, price_payload
+
+    current_price = _safe_price_number(raw_price_data.get('current_price'))
+    previous_close = _safe_price_number(raw_price_data.get('previous_close'))
+    price_payload.update({
+        'current_price': current_price,
+        'previous_close': previous_close,
+        'currency': raw_price_data.get('currency'),
+        'source': raw_price_data.get('source'),
+        'quote_time': raw_price_data.get('quote_time'),
+    })
+
+    normalized_price_data = {
+        **raw_price_data,
+        'current_price': current_price,
+        'previous_close': previous_close,
+    }
+    if raw_price_data.get('currency') != asset.currency:
+        price_payload['error'] = '价格币种与资产币种不一致，暂不计算收益'
+    elif raw_price_data.get('current_price') is not None and current_price is None:
+        price_payload['error'] = '价格数据异常，暂不计算收益'
+        normalized_price_data = None
+    return normalized_price_data, price_payload
+
+
+def _asset_detail_performance(asset, price_data, records):
+    realized_profit = sum(record.realized_profit or 0 for record in records if record.action == 'sell')
+    realized_cost = sum(record.cost_basis or 0 for record in records if record.action == 'sell')
+    realized_profit_percent = (realized_profit / realized_cost * 100) if realized_cost > 0 else None
+    investment = asset.buy_price * asset.quantity
+
+    if not price_data:
+        return {
+            'investment': investment,
+            'current_value': None,
+            'unrealized_profit': None,
+            'unrealized_profit_percent': None,
+            'daily_profit': None,
+            'daily_profit_percent': None,
+            'realized_profit': realized_profit,
+            'realized_profit_percent': realized_profit_percent,
+        }
+
+    current_price = price_data.get('current_price')
+    previous_close = price_data.get('previous_close')
+    if price_data.get('currency') != asset.currency or current_price is None:
+        return {
+            'investment': investment,
+            'current_value': None,
+            'unrealized_profit': None,
+            'unrealized_profit_percent': None,
+            'daily_profit': None,
+            'daily_profit_percent': None,
+            'realized_profit': realized_profit,
+            'realized_profit_percent': realized_profit_percent,
+        }
+
+    current_value = current_price * asset.quantity
+    unrealized_profit = current_value - investment
+    daily_profit = (current_price - previous_close) * asset.quantity if previous_close is not None else None
+    daily_profit_percent = ((current_price - previous_close) / previous_close * 100) if previous_close and previous_close > 0 else None
+    return {
+        'investment': investment,
+        'current_value': current_value,
+        'unrealized_profit': unrealized_profit,
+        'unrealized_profit_percent': (unrealized_profit / investment * 100) if investment > 0 else None,
+        'daily_profit': daily_profit,
+        'daily_profit_percent': daily_profit_percent,
+        'realized_profit': realized_profit,
+        'realized_profit_percent': realized_profit_percent,
+    }
+
 
 @assets_bp.route('', methods=['GET'])
 @jwt_required()
@@ -174,6 +271,44 @@ def get_asset(asset_id):
         return jsonify({'error': '资产不存在'}), 404
     
     return jsonify({'asset': asset.to_dict()})
+
+
+@assets_bp.route('/<int:asset_id>/detail', methods=['GET'])
+@jwt_required()
+def get_asset_detail(asset_id):
+    user_id = _current_user_id()
+    asset = Asset.query.filter_by(id=asset_id, user_id=user_id).first()
+
+    if not asset:
+        return jsonify({'error': '资产不存在或已清仓'}), 404
+
+    records = (
+        TradeRecord.query
+        .filter_by(user_id=user_id, asset_id=asset.id)
+        .order_by(TradeRecord.created_at.desc(), TradeRecord.id.desc())
+        .all()
+    )
+    price_error = None
+    try:
+        raw_price_data = PriceFetcher.get_price(asset.symbol, asset.asset_type)
+    except Exception as exc:
+        logger.warning(
+            "assets.detail.price_fetch_failed user_id=%s asset_id=%s error=%s",
+            user_id,
+            asset.id,
+            exc,
+        )
+        raw_price_data = None
+        price_error = '价格获取失败，暂不计算收益'
+    price_data, price_payload = _asset_detail_price_payload(asset, raw_price_data, price_error)
+
+    return jsonify({
+        'asset': asset.to_dict(),
+        'price': price_payload,
+        'performance': _asset_detail_performance(asset, price_data, records),
+        'records': [record.to_dict() for record in records],
+    })
+
 
 @assets_bp.route('/<int:asset_id>', methods=['PUT'])
 @jwt_required()
