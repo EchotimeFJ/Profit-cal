@@ -14,6 +14,7 @@ os.environ['JWT_SECRET_KEY'] = 'test-jwt-secret-for-asset-detail'
 
 from app import app  # noqa: E402
 from db import db  # noqa: E402
+from models import PortfolioHistorySnapshot, TradeRecord  # noqa: E402
 
 
 class AssetDetailTestCase(unittest.TestCase):
@@ -102,6 +103,53 @@ class AssetDetailTestCase(unittest.TestCase):
         self.assertIsNone(data['price']['current_price'])
         self.assertIsNone(data['performance']['current_value'])
         self.assertEqual(len(data['records']), 1)
+
+    @patch('routes.assets.PriceFetcher.get_price')
+    def test_get_asset_detail_handles_price_exception_without_writing(self, mock_get_price):
+        mock_get_price.side_effect = RuntimeError('price timeout')
+
+        with app.app_context():
+            before_trade_count = TradeRecord.query.count()
+            before_history_count = PortfolioHistorySnapshot.query.count()
+
+        with patch('routes.assets.db.session.commit', side_effect=AssertionError('detail must be read-only')):
+            response = self.client.get(f'/api/assets/{self.asset_id}/detail', headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data['price']['error'], '价格获取失败，暂不计算收益')
+        self.assertIsNone(data['price']['current_price'])
+        self.assertIsNone(data['performance']['current_value'])
+        with app.app_context():
+            self.assertEqual(TradeRecord.query.count(), before_trade_count)
+            self.assertEqual(PortfolioHistorySnapshot.query.count(), before_history_count)
+
+    @patch('routes.assets.PriceFetcher.get_price')
+    def test_get_asset_detail_rejects_non_finite_prices_without_writing(self, mock_get_price):
+        mock_get_price.return_value = {
+            'current_price': float('nan'),
+            'previous_close': float('inf'),
+            'currency': 'CNY',
+            'source': 'mock',
+            'quote_time': '2026-07-09T10:30:00',
+        }
+
+        with app.app_context():
+            before_trade_count = TradeRecord.query.count()
+            before_history_count = PortfolioHistorySnapshot.query.count()
+
+        with patch('routes.assets.db.session.commit', side_effect=AssertionError('detail must be read-only')):
+            response = self.client.get(f'/api/assets/{self.asset_id}/detail', headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data['price']['error'], '价格数据异常，暂不计算收益')
+        self.assertIsNone(data['price']['current_price'])
+        self.assertIsNone(data['price']['previous_close'])
+        self.assertIsNone(data['performance']['current_value'])
+        with app.app_context():
+            self.assertEqual(TradeRecord.query.count(), before_trade_count)
+            self.assertEqual(PortfolioHistorySnapshot.query.count(), before_history_count)
 
     @patch('routes.assets.PriceFetcher.get_price')
     def test_get_asset_detail_avoids_currency_mismatch_calculation(self, mock_get_price):

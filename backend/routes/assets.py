@@ -54,6 +54,53 @@ def _record_trade(asset, action, price, quantity, *, cost_basis=None, realized_p
     )
 
 
+def _safe_price_number(value):
+    if value in [None, '']:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(parsed):
+        return None
+    return parsed
+
+
+def _asset_detail_price_payload(asset, raw_price_data, error=None):
+    price_payload = {
+        'current_price': None,
+        'previous_close': None,
+        'currency': asset.currency,
+        'source': None,
+        'quote_time': None,
+        'error': error,
+    }
+    if not isinstance(raw_price_data, dict):
+        return None, price_payload
+
+    current_price = _safe_price_number(raw_price_data.get('current_price'))
+    previous_close = _safe_price_number(raw_price_data.get('previous_close'))
+    price_payload.update({
+        'current_price': current_price,
+        'previous_close': previous_close,
+        'currency': raw_price_data.get('currency'),
+        'source': raw_price_data.get('source'),
+        'quote_time': raw_price_data.get('quote_time'),
+    })
+
+    normalized_price_data = {
+        **raw_price_data,
+        'current_price': current_price,
+        'previous_close': previous_close,
+    }
+    if raw_price_data.get('currency') != asset.currency:
+        price_payload['error'] = '价格币种与资产币种不一致，暂不计算收益'
+    elif raw_price_data.get('current_price') is not None and current_price is None:
+        price_payload['error'] = '价格数据异常，暂不计算收益'
+        normalized_price_data = None
+    return normalized_price_data, price_payload
+
+
 def _asset_detail_performance(asset, price_data, records):
     realized_profit = sum(record.realized_profit or 0 for record in records if record.action == 'sell')
     realized_cost = sum(record.cost_basis or 0 for record in records if record.action == 'sell')
@@ -241,25 +288,19 @@ def get_asset_detail(asset_id):
         .order_by(TradeRecord.created_at.desc(), TradeRecord.id.desc())
         .all()
     )
-    price_data = PriceFetcher.get_price(asset.symbol, asset.asset_type)
-    price_payload = {
-        'current_price': None,
-        'previous_close': None,
-        'currency': asset.currency,
-        'source': None,
-        'quote_time': None,
-        'error': None,
-    }
-    if price_data:
-        price_payload.update({
-            'current_price': price_data.get('current_price'),
-            'previous_close': price_data.get('previous_close'),
-            'currency': price_data.get('currency'),
-            'source': price_data.get('source'),
-            'quote_time': price_data.get('quote_time'),
-        })
-        if price_data.get('currency') != asset.currency:
-            price_payload['error'] = '价格币种与资产币种不一致，暂不计算收益'
+    price_error = None
+    try:
+        raw_price_data = PriceFetcher.get_price(asset.symbol, asset.asset_type)
+    except Exception as exc:
+        logger.warning(
+            "assets.detail.price_fetch_failed user_id=%s asset_id=%s error=%s",
+            user_id,
+            asset.id,
+            exc,
+        )
+        raw_price_data = None
+        price_error = '价格获取失败，暂不计算收益'
+    price_data, price_payload = _asset_detail_price_payload(asset, raw_price_data, price_error)
 
     return jsonify({
         'asset': asset.to_dict(),
