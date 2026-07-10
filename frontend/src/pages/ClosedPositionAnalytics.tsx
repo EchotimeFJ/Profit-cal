@@ -7,6 +7,7 @@ import {
   formatAssetPrice,
   formatAssetQuantity,
   formatCurrency,
+  formatNumber,
   formatPercent,
   getAssetTypeLabel,
 } from '../lib/utils';
@@ -27,7 +28,10 @@ const profitColor = (value: number) => (
   value >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)'
 );
 
-const positionKey = (position: ClosedPositionItem) => `${position.asset_id}-${position.closed_at}`;
+const positionKey = (position: ClosedPositionItem) => {
+  const recordIds = position.records.map((record) => record.id).join(',');
+  return `${position.asset_id}-${position.first_buy_at}-${position.closed_at}-${recordIds}`;
+};
 
 const Metric: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="rounded-xl bg-surface-soft p-3">
@@ -206,8 +210,8 @@ export const ClosedPositionAnalytics: React.FC = () => {
         <SummaryCard
           icon={<Wallet className="h-4 w-4" />}
           label="总已实现收益"
-          value={formatCurrency(summary?.total_realized_profit ?? 0, 'CNY')}
-          hint="多币种未折算，仅作汇总参考"
+          value={formatNumber(summary?.total_realized_profit ?? 0)}
+          hint="无币种汇总，多币种未折算，仅作参考"
         />
         <SummaryCard
           icon={<TrendingUp className="h-4 w-4" />}
