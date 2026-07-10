@@ -1,9 +1,20 @@
+import os
+import sys
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 
-from app import app
-from db import db
-from models import Alert, Asset, PortfolioHistorySnapshot, TradeRecord, User
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+_tmpdir = tempfile.TemporaryDirectory()
+os.environ['DATABASE_URL'] = f"sqlite:///{os.path.join(_tmpdir.name, 'closed-position-analytics.db')}"
+os.environ['SECRET_KEY'] = 'test-secret-for-closed-position-analytics'
+os.environ['JWT_SECRET_KEY'] = 'test-jwt-secret-for-closed-position-analytics'
+
+from app import app  # noqa: E402
+from db import db  # noqa: E402
+from models import Alert, Asset, PortfolioHistorySnapshot, TradeRecord, User  # noqa: E402
 
 
 def auth_headers(client, username='alice', email='alice@example.com'):
