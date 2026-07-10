@@ -189,8 +189,11 @@ export const ClosedPositionAnalytics: React.FC = () => {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Link to="/dashboard" className="w-full sm:w-auto">
-            <Button variant="secondary" className="w-full sm:w-auto">返回主页</Button>
+          <Link
+            to="/dashboard"
+            className="inline-flex w-full items-center justify-center rounded-pill bg-surface-strong px-5 py-3 text-button font-semibold text-ink transition-colors hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-coinbase-blue focus:ring-offset-2 sm:w-auto"
+          >
+            返回主页
           </Link>
           <Button onClick={fetchAnalytics} disabled={loading} className="w-full sm:w-auto">
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
