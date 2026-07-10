@@ -47,6 +47,8 @@ export const Settings: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
+
     setLoading(true);
     setProfileMessage('');
 
@@ -62,6 +64,8 @@ export const Settings: React.FC = () => {
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (passwordLoading) return;
+
     setPasswordMessage('');
 
     const normalizedEmail = passwordForm.email.trim().toLowerCase();
@@ -125,16 +129,18 @@ export const Settings: React.FC = () => {
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">用户名</label>
+                  <label htmlFor="settings-username" className="block text-caption font-medium text-ink mb-2">用户名</label>
                   <Input
+                    id="settings-username"
                     value={formData.username}
                     onChange={(e) => setFormData({ ...formData, username: e.target.value })}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">邮箱</label>
+                  <label htmlFor="settings-email" className="block text-caption font-medium text-ink mb-2">邮箱</label>
                   <Input
+                    id="settings-email"
                     type="email"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
@@ -144,8 +150,9 @@ export const Settings: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">默认结算货币</label>
+                  <label htmlFor="settings-preferred-currency" className="block text-caption font-medium text-ink mb-2">默认结算货币</label>
                   <Select
+                    id="settings-preferred-currency"
                     value={formData.preferred_currency}
                     onChange={(e) => setFormData({ ...formData, preferred_currency: e.target.value })}
                   >
@@ -200,8 +207,9 @@ export const Settings: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-caption font-medium text-ink mb-2">绑定邮箱</label>
+                <label htmlFor="settings-password-email" className="block text-caption font-medium text-ink mb-2">绑定邮箱</label>
                 <Input
+                  id="settings-password-email"
                   type="email"
                   value={passwordForm.email}
                   onChange={(e) => setPasswordForm({ ...passwordForm, email: e.target.value })}
@@ -211,8 +219,9 @@ export const Settings: React.FC = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">新密码</label>
+                  <label htmlFor="settings-new-password" className="block text-caption font-medium text-ink mb-2">新密码</label>
                   <Input
+                    id="settings-new-password"
                     type="password"
                     value={passwordForm.password}
                     onChange={(e) => setPasswordForm({ ...passwordForm, password: e.target.value })}
@@ -221,8 +230,9 @@ export const Settings: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">确认新密码</label>
+                  <label htmlFor="settings-confirm-password" className="block text-caption font-medium text-ink mb-2">确认新密码</label>
                   <Input
+                    id="settings-confirm-password"
                     type="password"
                     value={passwordForm.confirmPassword}
                     onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
@@ -261,12 +271,13 @@ export const Settings: React.FC = () => {
             </div>
           </CardHeader>
           <CardContent className="p-5 sm:p-xl">
-            <label className="flex items-start sm:items-center justify-between gap-4 cursor-pointer">
+            <label htmlFor="settings-dark-mode" className="flex items-start sm:items-center justify-between gap-4 cursor-pointer">
               <div>
                 <p className="text-title-sm text-ink">黑暗模式</p>
                 <p className="text-body-sm text-muted mt-1">切换为深色界面，适合夜间查看资产变化</p>
               </div>
               <input
+                id="settings-dark-mode"
                 type="checkbox"
                 checked={isDark}
                 onChange={(e) => handleThemeChange(e.target.checked)}

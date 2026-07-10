@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
@@ -15,6 +15,7 @@ import { PortfolioData, PortfolioAsset, TradeRecord } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
+import { useDialogA11y } from '../hooks/useDialogA11y';
 import {
   RefreshCw,
   Plus,
@@ -161,6 +162,10 @@ export const Dashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('positions');
   const [addingAsset, setAddingAsset] = useState<PortfolioAsset | null>(null);
   const [sellingAsset, setSellingAsset] = useState<PortfolioAsset | null>(null);
+  const [addPositionSubmitting, setAddPositionSubmitting] = useState(false);
+  const [sellSubmitting, setSellSubmitting] = useState(false);
+  const addPositionDialogRef = useRef<HTMLDivElement>(null);
+  const sellDialogRef = useRef<HTMLDivElement>(null);
   const [addPositionFormData, setAddPositionFormData] = useState({
     buy_price: '',
     quantity: '',
@@ -175,6 +180,17 @@ export const Dashboard: React.FC = () => {
   const addPositionCurrency = addingAsset?.currency || 'CNY';
   const sellCurrency = sellingAsset?.currency || 'CNY';
   const preferencePrefix = user?.id ? `profit-cal:${user.id}:dashboard:` : 'profit-cal:dashboard:';
+
+  const closeAddPositionModal = useCallback(() => {
+    setAddingAsset(null);
+  }, []);
+
+  const closeSellModal = useCallback(() => {
+    setSellingAsset(null);
+  }, []);
+
+  useDialogA11y(Boolean(addingAsset), closeAddPositionModal, addPositionDialogRef);
+  useDialogA11y(Boolean(sellingAsset), closeSellModal, sellDialogRef);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -316,7 +332,9 @@ export const Dashboard: React.FC = () => {
 
   const handleSellSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (sellSubmitting) return;
     if (!sellingAsset) return;
+    setSellSubmitting(true);
 
     try {
       await api.post(`/assets/${sellingAsset.id}/sell`, {
@@ -324,7 +342,7 @@ export const Dashboard: React.FC = () => {
         quantity: sellFormData.quantity ? parseFloat(sellFormData.quantity) : undefined,
         amount: sellFormData.amount ? parseFloat(sellFormData.amount) : undefined,
       });
-      setSellingAsset(null);
+      closeSellModal();
       setSellFormData({ sell_price: '', quantity: '', amount: '' });
       setActiveTab('history');
       await Promise.all([
@@ -333,12 +351,16 @@ export const Dashboard: React.FC = () => {
       ]);
     } catch (error: any) {
       alert(error.message || '卖出失败');
+    } finally {
+      setSellSubmitting(false);
     }
   };
 
   const handleAddPositionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (addPositionSubmitting) return;
     if (!addingAsset) return;
+    setAddPositionSubmitting(true);
 
     try {
       await api.post(`/assets/${addingAsset.id}/add-position`, {
@@ -346,7 +368,7 @@ export const Dashboard: React.FC = () => {
         quantity: addPositionFormData.quantity ? parseFloat(addPositionFormData.quantity) : undefined,
         amount: addPositionFormData.amount ? parseFloat(addPositionFormData.amount) : undefined,
       });
-      setAddingAsset(null);
+      closeAddPositionModal();
       setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
       setActiveTab('history');
       await Promise.all([
@@ -355,6 +377,8 @@ export const Dashboard: React.FC = () => {
       ]);
     } catch (error: any) {
       alert(error.message || '加仓失败');
+    } finally {
+      setAddPositionSubmitting(false);
     }
   };
 
@@ -453,10 +477,11 @@ export const Dashboard: React.FC = () => {
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
-          <label className="flex items-center justify-between gap-3 text-sm font-medium text-muted">
+          <label htmlFor="dashboard-settlement-currency" className="flex items-center justify-between gap-3 text-sm font-medium text-muted">
             <span>结算货币</span>
             <div className="relative min-w-[150px]">
               <Select
+                id="dashboard-settlement-currency"
                 value={settlementCurrency}
                 onChange={(e) => handleSettlementCurrencyChange(e.target.value)}
                 className="h-10 cursor-pointer appearance-none rounded-xl bg-canvas py-0 pl-3 pr-9 text-sm font-semibold shadow-none"
@@ -865,9 +890,14 @@ export const Dashboard: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setAddingAsset(null)}
+              onClick={closeAddPositionModal}
             />
             <motion.div
+              ref={addPositionDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dashboard-add-position-title"
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -876,20 +906,21 @@ export const Dashboard: React.FC = () => {
             >
               <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
                 <div>
-                  <h2 className="text-title-md font-semibold text-ink">加仓资产</h2>
+                  <h2 id="dashboard-add-position-title" className="text-title-md font-semibold text-ink">加仓资产</h2>
                   <p className="text-body-sm text-muted mt-1">
                     {addingAsset.name} · 当前持有 {formatAssetQuantity(addingAsset.quantity, addingAsset.asset_type)}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setAddingAsset(null)}>
+                <Button variant="ghost" size="sm" onClick={closeAddPositionModal}>
                   <X className="w-5 h-5" />
                 </Button>
               </div>
 
               <form onSubmit={handleAddPositionSubmit} className="px-6 py-6 space-y-5">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">加仓价</label>
+                  <label htmlFor="dashboard-add-buy-price" className="block text-caption font-medium text-ink mb-2">加仓价</label>
                   <Input
+                    id="dashboard-add-buy-price"
                     type="number"
                     step="0.001"
                     value={addPositionFormData.buy_price}
@@ -901,8 +932,9 @@ export const Dashboard: React.FC = () => {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">数量</label>
+                    <label htmlFor="dashboard-add-quantity" className="block text-caption font-medium text-ink mb-2">数量</label>
                     <Input
+                      id="dashboard-add-quantity"
                       type="number"
                       step="0.000001"
                       value={addPositionFormData.quantity}
@@ -911,9 +943,10 @@ export const Dashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">或金额</label>
+                    <label htmlFor="dashboard-add-amount" className="block text-caption font-medium text-ink mb-2">或金额</label>
                     <div className="relative">
                       <Input
+                        id="dashboard-add-amount"
                         type="number"
                         step="0.01"
                         value={addPositionFormData.amount}
@@ -933,10 +966,10 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-                  <Button type="submit" className="flex-1">
-                    确认加仓
+                  <Button type="submit" disabled={addPositionSubmitting} className="flex-1">
+                    {addPositionSubmitting ? '提交中...' : '确认加仓'}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setAddingAsset(null)}>
+                  <Button type="button" variant="secondary" onClick={closeAddPositionModal}>
                     取消
                   </Button>
                 </div>
@@ -951,9 +984,14 @@ export const Dashboard: React.FC = () => {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setSellingAsset(null)}
+              onClick={closeSellModal}
             />
             <motion.div
+              ref={sellDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dashboard-sell-title"
+              tabIndex={-1}
               initial={{ opacity: 0, y: '100%', scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: '100%', scale: 0.95 }}
@@ -962,20 +1000,21 @@ export const Dashboard: React.FC = () => {
             >
               <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
                 <div>
-                  <h2 className="text-title-md font-semibold text-ink">卖出资产</h2>
+                  <h2 id="dashboard-sell-title" className="text-title-md font-semibold text-ink">卖出资产</h2>
                   <p className="text-body-sm text-muted mt-1">
                     {sellingAsset.name} · 当前持有 {formatAssetQuantity(sellingAsset.quantity, sellingAsset.asset_type)}
                   </p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setSellingAsset(null)}>
+                <Button variant="ghost" size="sm" onClick={closeSellModal}>
                   <X className="w-5 h-5" />
                 </Button>
               </div>
 
               <form onSubmit={handleSellSubmit} className="px-6 py-6 space-y-5">
                 <div>
-                  <label className="block text-caption font-medium text-ink mb-2">卖出价</label>
+                  <label htmlFor="dashboard-sell-price" className="block text-caption font-medium text-ink mb-2">卖出价</label>
                   <Input
+                    id="dashboard-sell-price"
                     type="number"
                     step="0.001"
                     value={sellFormData.sell_price}
@@ -988,7 +1027,7 @@ export const Dashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-caption font-medium text-ink">数量</label>
+                      <label htmlFor="dashboard-sell-quantity" className="block text-caption font-medium text-ink">数量</label>
                       <button
                         type="button"
                         className="text-caption font-medium text-coinbase-blue"
@@ -1002,6 +1041,7 @@ export const Dashboard: React.FC = () => {
                       </button>
                     </div>
                     <Input
+                      id="dashboard-sell-quantity"
                       type="number"
                       step="0.000001"
                       value={sellFormData.quantity}
@@ -1010,9 +1050,10 @@ export const Dashboard: React.FC = () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-caption font-medium text-ink mb-2">或金额</label>
+                    <label htmlFor="dashboard-sell-amount" className="block text-caption font-medium text-ink mb-2">或金额</label>
                     <div className="relative">
                       <Input
+                        id="dashboard-sell-amount"
                         type="number"
                         step="0.01"
                         value={sellFormData.amount}
@@ -1032,10 +1073,10 @@ export const Dashboard: React.FC = () => {
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
-                  <Button type="submit" className="flex-1">
-                    确认卖出
+                  <Button type="submit" disabled={sellSubmitting} className="flex-1">
+                    {sellSubmitting ? '提交中...' : '确认卖出'}
                   </Button>
-                  <Button type="button" variant="secondary" onClick={() => setSellingAsset(null)}>
+                  <Button type="button" variant="secondary" onClick={closeSellModal}>
                     取消
                   </Button>
                 </div>
@@ -1066,14 +1107,17 @@ function DashboardSelect<T extends string>({
   options: readonly DashboardSelectOption<T>[];
   onChange: (value: T) => void;
 }) {
+  const selectId = useId();
+
   return (
-    <label className="group flex items-center justify-between gap-2 rounded-2xl border border-hairline bg-surface-soft px-3 py-2 transition-colors">
+    <label htmlFor={selectId} className="group flex items-center justify-between gap-2 rounded-2xl border border-hairline bg-surface-soft px-3 py-2 transition-colors">
       <span className="flex shrink-0 items-center gap-2 text-[13px] font-medium text-muted">
         {icon}
         {label}
       </span>
       <div className="relative min-w-0 flex-1">
         <Select
+          id={selectId}
           value={value}
           onChange={(event) => onChange(event.target.value as T)}
           className="h-9 cursor-pointer appearance-none rounded-xl bg-canvas py-0 pl-3 pr-8 text-[13px] font-semibold shadow-none"
