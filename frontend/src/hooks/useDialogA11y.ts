@@ -9,6 +9,11 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
+const getFocusableElements = (root: HTMLElement) => (
+  Array.from(root.querySelectorAll<HTMLElement>(focusableSelector))
+    .filter((element) => !element.hasAttribute('disabled') && element.tabIndex !== -1)
+);
+
 export function useDialogA11y(
   isOpen: boolean,
   onClose: () => void,
@@ -25,6 +30,36 @@ export function useDialogA11y(
       if (event.key === 'Escape') {
         event.preventDefault();
         onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+
+      const focusableElements = getFocusableElements(dialog);
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+
+      if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
       }
     };
 
@@ -34,7 +69,7 @@ export function useDialogA11y(
       const dialog = dialogRef.current;
       if (!dialog) return;
 
-      const firstFocusable = dialog.querySelector<HTMLElement>(focusableSelector);
+      const firstFocusable = getFocusableElements(dialog)[0];
       (firstFocusable || dialog).focus();
     });
 
