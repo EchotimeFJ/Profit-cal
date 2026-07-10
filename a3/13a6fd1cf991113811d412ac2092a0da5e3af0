@@ -1,0 +1,114 @@
+docs/superpowers/plans/2026-07-09-current-position-detail-and-history-curve.md
+  s_582fbf4ea07e2d::t_292e098b82ce3f 1349 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a50685b534c9b5635a0c533","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Single":1349}]}]}
+  s_582fbf4ea07e2d::t_2881436ae4e3e2 1-1348,1350-1358 gitai:{"mixed_line_ranges":[],"operations":[{"operation_id":"6a5067d7534c9b5635a0c4d1","tool_type":"agent","tool_id":"apply_patch","line_ranges":[{"Range":[1,1348]},{"Range":[1350,1358]}]}]}
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a313a6fd1cf991113811d412ac2092a0da5e3af0",
+  "prompts": {},
+  "sessions": {
+    "s_582fbf4ea07e2d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a4e17a3534c9b5635a0abd9",
+        "model": "gpt-5.5__dev"
+      },
+      "human_author": "fujia.111 <fujia.111@bytedance.com>"
+    }
+  },
+  "attestation_metadata": {
+    "docs/superpowers/plans/2026-07-09-current-position-detail-and-history-curve.md": [
+      {
+        "hash": "s_582fbf4ea07e2d::t_292e098b82ce3f",
+        "line_ranges": [
+          {
+            "Single": 1349
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a50685b534c9b5635a0c533",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Single": 1349
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "hash": "s_582fbf4ea07e2d::t_2881436ae4e3e2",
+        "line_ranges": [
+          {
+            "Range": [
+              1,
+              1348
+            ]
+          },
+          {
+            "Range": [
+              1350,
+              1358
+            ]
+          }
+        ],
+        "mixed_line_ranges": [],
+        "operations": [
+          {
+            "operation_id": "6a5067d7534c9b5635a0c4d1",
+            "tool_type": "agent",
+            "tool_id": "apply_patch",
+            "line_ranges": [
+              {
+                "Range": [
+                  1,
+                  1348
+                ]
+              },
+              {
+                "Range": [
+                  1350,
+                  1358
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "remote_transcripts": {
+    "s_582fbf4ea07e2d": {
+      "tool": "trae",
+      "conversation_id": "6a4e17a3534c9b5635a0abd9",
+      "session_id": "6a4e17a3534c9b5635a0abd9",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_582fbf4ea07e2d::t_2881436ae4e3e2": {
+      "tool": "trae",
+      "conversation_id": "6a4e17a3534c9b5635a0abd9",
+      "session_id": "6a4e17a3534c9b5635a0abd9",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_582fbf4ea07e2d::t_292e098b82ce3f": {
+      "tool": "trae",
+      "conversation_id": "6a4e17a3534c9b5635a0abd9",
+      "session_id": "6a4e17a3534c9b5635a0abd9",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    },
+    "s_582fbf4ea07e2d::t_a71e2cece26759": {
+      "tool": "trae",
+      "conversation_id": "6a4e17a3534c9b5635a0abd9",
+      "session_id": "6a4e17a3534c9b5635a0abd9",
+      "status": "remote_only",
+      "message": "Remote transcript resolution is not implemented yet for TRAE prompts."
+    }
+  }
+}
