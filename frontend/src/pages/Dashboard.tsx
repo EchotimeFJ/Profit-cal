@@ -557,11 +557,12 @@ export const Dashboard: React.FC = () => {
           <div className="text-sm text-muted text-left sm:text-right">
             <div>更新于 {formatUpdatedAt(portfolioData?.updated_at)}</div>
           </div>
-          <Link to="/analytics/closed-positions" className="w-full sm:w-auto">
-            <Button variant="secondary" className="w-full whitespace-nowrap sm:w-auto">
-              <BarChart3 className="mr-2 h-4 w-4 shrink-0" />
-              历史分析
-            </Button>
+          <Link
+            to="/analytics/closed-positions"
+            className="inline-flex w-full items-center justify-center rounded-pill bg-surface-strong px-5 py-3 text-button font-semibold text-ink transition-colors hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-coinbase-blue focus:ring-offset-2 sm:w-auto"
+          >
+            <BarChart3 className="mr-2 h-4 w-4 shrink-0" />
+            <span className="whitespace-nowrap">历史分析</span>
           </Link>
           <button
             onClick={handleRefresh}
