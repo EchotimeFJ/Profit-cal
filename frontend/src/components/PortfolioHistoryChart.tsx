@@ -19,6 +19,14 @@ const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
 );
 
+const safeFormatCurrency = (value: unknown, currency: string) => (
+  isFiniteNumber(value) ? formatCurrency(value, currency) : '--'
+);
+
+const safeFormatPercent = (value: unknown) => (
+  isFiniteNumber(value) ? formatPercent(value) : '--'
+);
+
 const metricPointValue = (point: PortfolioHistoryPoint, key: MetricKey) => point[key];
 
 const validMetricPoints = (points: PortfolioHistoryPoint[], key: MetricKey) => (
@@ -154,12 +162,13 @@ const MiniMetricChart: React.FC<{
 };
 
 export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ currency, points, error, onRetry }) => {
-  const latest = points[points.length - 1];
-  const first = points[0];
+  const safePoints = Array.isArray(points) ? points : [];
+  const latest = safePoints[safePoints.length - 1];
+  const first = safePoints[0];
   const latestProfitColor = (latest?.total_profit ?? 0) >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
   const hasEnoughPoints = (
-    validMetricPoints(points, 'total_current_value').length >= 2 ||
-    validMetricPoints(points, 'total_profit').length >= 2
+    validMetricPoints(safePoints, 'total_current_value').length >= 2 ||
+    validMetricPoints(safePoints, 'total_profit').length >= 2
   );
 
   return (
@@ -175,10 +184,10 @@ export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ cu
         {latest && (
           <div className="text-left sm:text-right">
             <p className="font-number text-title-sm font-semibold text-ink">
-              {formatCurrency(latest.total_current_value, currency)}
+              {safeFormatCurrency(latest.total_current_value, currency)}
             </p>
             <p className="font-number text-body-sm" style={{ color: latestProfitColor }}>
-              {formatCurrency(latest.total_profit, currency)} · {formatPercent(latest.total_profit_percent)}
+              {safeFormatCurrency(latest.total_profit, currency)} · {safeFormatPercent(latest.total_profit_percent)}
             </p>
           </div>
         )}
@@ -197,7 +206,8 @@ export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ cu
       ) : !hasEnoughPoints ? (
         <div className="mt-5 rounded-2xl border border-dashed border-hairline bg-surface-soft p-6 text-center">
           <p className="text-body-sm font-semibold text-ink">暂无足够历史数据</p>
-          <p className="mt-1 text-body-sm text-muted">点击刷新会生成或更新今天的组合快照。</p>
+          <p className="mt-1 text-body-sm text-muted">暂无足够历史数据，今天开始记录。</p>
+          <p className="mt-1 text-caption text-muted">点击刷新会生成或更新今天的组合快照。</p>
         </div>
       ) : (
         <div className="mt-5 overflow-x-auto">
@@ -206,7 +216,7 @@ export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ cu
               title="总市值趋势"
               description="组合总市值，使用独立纵轴展示变化方向"
               currency={currency}
-              points={points}
+              points={safePoints}
               metricKey="total_current_value"
               stroke="var(--color-coinbase-blue)"
             />
@@ -214,7 +224,7 @@ export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ cu
               title="累计收益趋势"
               description="组合累计收益，虚线用于和总市值区分"
               currency={currency}
-              points={points}
+              points={safePoints}
               metricKey="total_profit"
               stroke="var(--color-semantic-up)"
               dashed

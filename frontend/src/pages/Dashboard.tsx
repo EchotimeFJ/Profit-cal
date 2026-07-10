@@ -148,6 +148,14 @@ const getAlertActionLabel = (alertType: string) => {
   return '到达';
 };
 
+const normalizePortfolioHistoryData = (
+  data: PortfolioHistoryData,
+  fallbackCurrency: string
+): PortfolioHistoryData => ({
+  currency: data?.currency || fallbackCurrency,
+  points: Array.isArray(data?.points) ? data.points : [],
+});
+
 export const Dashboard: React.FC = () => {
   const { user, updateUser } = useAuth();
   const navigate = useNavigate();
@@ -228,7 +236,7 @@ export const Dashboard: React.FC = () => {
       setPortfolioHistoryError('');
       const params = new URLSearchParams({ currency: settlementCurrency });
       const data = await api.get<PortfolioHistoryData>(`/portfolio/history?${params.toString()}`);
-      setPortfolioHistory(data);
+      setPortfolioHistory(normalizePortfolioHistoryData(data, settlementCurrency));
     } catch (error) {
       console.error('获取组合历史净值失败:', error);
       setPortfolioHistoryError(error instanceof Error ? error.message : '历史净值加载失败');
@@ -250,8 +258,13 @@ export const Dashboard: React.FC = () => {
     try {
       const data = await api.get<PortfolioData>(`/prices/portfolio?${params.toString()}`);
       setPortfolioData(data);
+      return true;
     } catch (error) {
       console.error('获取组合数据失败:', error);
+      if (options?.refresh && !options?.silent) {
+        throw error;
+      }
+      return false;
     } finally {
       setLoading(false);
       if (options?.refresh && !options?.silent) {
@@ -339,7 +352,8 @@ export const Dashboard: React.FC = () => {
 
   const handleRefresh = async () => {
     try {
-      await fetchPortfolio({ refresh: true });
+      const refreshed = await fetchPortfolio({ refresh: true });
+      if (!refreshed) return;
       await api.post('/portfolio/history/snapshot', { currency: settlementCurrency });
       await Promise.all([
         fetchPortfolioHistory(),
@@ -707,9 +721,13 @@ export const Dashboard: React.FC = () => {
         <div className="flex flex-col gap-4 border-b border-hairline pb-5 mb-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2 border-b border-hairline overflow-x-auto">
+              <div role="tablist" aria-label="资产视图" className="flex items-center gap-2 border-b border-hairline overflow-x-auto">
                 <button
+                  id="dashboard-tab-positions"
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'positions'}
+                  aria-controls="dashboard-panel-positions"
                   onClick={() => setActiveTab('positions')}
                   className={`px-4 py-3 text-nav-link border-b-2 transition-colors ${
                     activeTab === 'positions'
@@ -720,7 +738,11 @@ export const Dashboard: React.FC = () => {
                   持仓资产
                 </button>
                 <button
+                  id="dashboard-tab-history"
                   type="button"
+                  role="tab"
+                  aria-selected={activeTab === 'history'}
+                  aria-controls="dashboard-panel-history"
                   onClick={() => setActiveTab('history')}
                   className={`px-4 py-3 text-nav-link border-b-2 transition-colors ${
                     activeTab === 'history'
@@ -800,116 +822,120 @@ export const Dashboard: React.FC = () => {
         </div>
 
         {activeTab === 'positions' ? (
-          filteredPortfolio.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '44px 24px',
-              backgroundColor: 'var(--color-surface-soft)',
-              border: '1px solid var(--color-hairline)',
-              borderRadius: '24px'
-            }}>
-              <Wallet style={{
-                width: '44px',
-                height: '44px',
-                color: 'var(--color-muted)',
-                margin: '0 auto 16px'
-              }} />
-              <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
-                当前筛选下没有持仓
-              </p>
-              <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
-                可以切换筛选、调整排序，或继续添加资产。
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {filteredPortfolio.map((asset, index) => (
-                <motion.div
-                  key={asset.id}
-                  initial={{ opacity: 0, y: 18 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.04 }}
-                >
-                  <PositionCard
-                    asset={asset}
-                    pnlDisplayMode={pnlDisplayMode}
-                    pnlExchangeRates={portfolioData?.pnl_exchange_rates}
-                    onAddPosition={() => {
-                      setAddingAsset(asset);
-                      setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
-                    }}
-                    onSell={() => {
-                      setSellingAsset(asset);
-                      setSellFormData({ sell_price: '', quantity: '', amount: '' });
-                    }}
-                    onViewDetail={() => navigate(`/assets/${asset.id}/detail`)}
-                  />
-                </motion.div>
-              ))}
-            </div>
-          )
+          <div id="dashboard-panel-positions" role="tabpanel" aria-labelledby="dashboard-tab-positions">
+            {filteredPortfolio.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '44px 24px',
+                backgroundColor: 'var(--color-surface-soft)',
+                border: '1px solid var(--color-hairline)',
+                borderRadius: '24px'
+              }}>
+                <Wallet style={{
+                  width: '44px',
+                  height: '44px',
+                  color: 'var(--color-muted)',
+                  margin: '0 auto 16px'
+                }} />
+                <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
+                  当前筛选下没有持仓
+                </p>
+                <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
+                  可以切换筛选、调整排序，或继续添加资产。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredPortfolio.map((asset, index) => (
+                  <motion.div
+                    key={asset.id}
+                    initial={{ opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.04 }}
+                  >
+                    <PositionCard
+                      asset={asset}
+                      pnlDisplayMode={pnlDisplayMode}
+                      pnlExchangeRates={portfolioData?.pnl_exchange_rates}
+                      onAddPosition={() => {
+                        setAddingAsset(asset);
+                        setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
+                      }}
+                      onSell={() => {
+                        setSellingAsset(asset);
+                        setSellFormData({ sell_price: '', quantity: '', amount: '' });
+                      }}
+                      onViewDetail={() => navigate(`/assets/${asset.id}/detail`)}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
-          records.length === 0 ? (
-            <div style={{
-              textAlign: 'center',
-              padding: '44px 24px',
-              backgroundColor: 'var(--color-surface-soft)',
-              border: '1px solid var(--color-hairline)',
-              borderRadius: '24px'
-            }}>
-              <History style={{
-                width: '44px',
-                height: '44px',
-                color: 'var(--color-muted)',
-                margin: '0 auto 16px'
-              }} />
-              <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
-                还没有交易记录
-              </p>
-              <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
-                买入、卖出和清仓都会在这里保留历史。
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {records.map((record) => (
-                <div
-                  key={record.id}
-                  className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 mb-1">
-                        <span className="text-title-sm font-semibold text-ink">{record.asset_name}</span>
-                        <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
-                          {record.action === 'buy' ? '买入' : '卖出'}
-                        </span>
-                        <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
-                          {getAssetTypeLabel(record.asset_type)}
-                        </span>
+          <div id="dashboard-panel-history" role="tabpanel" aria-labelledby="dashboard-tab-history">
+            {records.length === 0 ? (
+              <div style={{
+                textAlign: 'center',
+                padding: '44px 24px',
+                backgroundColor: 'var(--color-surface-soft)',
+                border: '1px solid var(--color-hairline)',
+                borderRadius: '24px'
+              }}>
+                <History style={{
+                  width: '44px',
+                  height: '44px',
+                  color: 'var(--color-muted)',
+                  margin: '0 auto 16px'
+                }} />
+                <p style={{ fontSize: '16px', color: 'var(--color-ink)', fontWeight: 600, marginBottom: '8px' }}>
+                  还没有交易记录
+                </p>
+                <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
+                  买入、卖出和清仓都会在这里保留历史。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {records.map((record) => (
+                  <div
+                    key={record.id}
+                    className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                          <span className="text-title-sm font-semibold text-ink">{record.asset_name}</span>
+                          <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                            {record.action === 'buy' ? '买入' : '卖出'}
+                          </span>
+                          <span className="text-caption px-2 py-0.5 bg-surface-soft text-muted rounded-full">
+                            {getAssetTypeLabel(record.asset_type)}
+                          </span>
+                        </div>
+                        <p className="text-body-sm text-muted break-all">
+                          {record.symbol} · {new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}
+                        </p>
+                        <p className="text-body-sm text-muted mt-2">
+                          {formatAssetQuantity(record.quantity, record.asset_type)} · 成交价 {formatAssetPrice(record.price, record.currency, record.asset_type)} · 金额 {formatCurrency(record.amount, record.currency)}
+                        </p>
                       </div>
-                      <p className="text-body-sm text-muted break-all">
-                        {record.symbol} · {new Date(record.created_at).toLocaleString('zh-CN', { hour12: false })}
-                      </p>
-                      <p className="text-body-sm text-muted mt-2">
-                        {formatAssetQuantity(record.quantity, record.asset_type)} · 成交价 {formatAssetPrice(record.price, record.currency, record.asset_type)} · 金额 {formatCurrency(record.amount, record.currency)}
-                      </p>
+                      {record.action === 'sell' && (
+                        <div className="text-left sm:text-right">
+                          <p className={`font-number text-title-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
+                            {formatCurrency(record.realized_profit || 0, record.currency)}
+                          </p>
+                          <p className={`font-number text-body-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
+                            {record.realized_profit_percent !== null ? `${record.realized_profit_percent >= 0 ? '+' : ''}${record.realized_profit_percent.toFixed(2)}%` : '--'}
+                          </p>
+                        </div>
+                      )}
                     </div>
-                    {record.action === 'sell' && (
-                      <div className="text-left sm:text-right">
-                        <p className={`font-number text-title-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
-                          {formatCurrency(record.realized_profit || 0, record.currency)}
-                        </p>
-                        <p className={`font-number text-body-sm ${(record.realized_profit || 0) >= 0 ? 'text-semantic-up' : 'text-semantic-down'}`}>
-                          {record.realized_profit_percent !== null ? `${record.realized_profit_percent >= 0 ? '+' : ''}${record.realized_profit_percent.toFixed(2)}%` : '--'}
-                        </p>
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
-            </div>
-          )
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
