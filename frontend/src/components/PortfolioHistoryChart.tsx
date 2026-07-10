@@ -19,6 +19,10 @@ const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
 );
 
+const isHistoryPoint = (value: unknown): value is PortfolioHistoryPoint => (
+  Boolean(value) && typeof value === 'object'
+);
+
 const safeFormatCurrency = (value: unknown, currency: string) => (
   isFiniteNumber(value) ? formatCurrency(value, currency) : '--'
 );
@@ -29,8 +33,12 @@ const safeFormatPercent = (value: unknown) => (
 
 const metricPointValue = (point: PortfolioHistoryPoint, key: MetricKey) => point[key];
 
-const validMetricPoints = (points: PortfolioHistoryPoint[], key: MetricKey) => (
-  points.filter((point) => isFiniteNumber(metricPointValue(point, key)))
+const normalizeHistoryPoints = (points: unknown): PortfolioHistoryPoint[] => (
+  Array.isArray(points) ? points.filter(isHistoryPoint) : []
+);
+
+const validMetricPoints = (points: unknown, key: MetricKey) => (
+  normalizeHistoryPoints(points).filter((point) => isFiniteNumber(metricPointValue(point, key)))
 );
 
 const pointCoordinates = (
@@ -162,7 +170,7 @@ const MiniMetricChart: React.FC<{
 };
 
 export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ currency, points, error, onRetry }) => {
-  const safePoints = Array.isArray(points) ? points : [];
+  const safePoints = normalizeHistoryPoints(points);
   const latest = safePoints[safePoints.length - 1];
   const first = safePoints[0];
   const latestProfitColor = (latest?.total_profit ?? 0) >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';

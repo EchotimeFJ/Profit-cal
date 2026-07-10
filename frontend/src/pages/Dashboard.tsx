@@ -350,6 +350,30 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const handleMainTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    const tabs: DashboardTab[] = ['positions', 'history'];
+    const currentIndex = tabs.indexOf(activeTab);
+    let nextTab: DashboardTab | null = null;
+
+    if (event.key === 'ArrowRight') {
+      nextTab = tabs[(currentIndex + 1) % tabs.length];
+    } else if (event.key === 'ArrowLeft') {
+      nextTab = tabs[(currentIndex - 1 + tabs.length) % tabs.length];
+    } else if (event.key === 'Home') {
+      nextTab = tabs[0];
+    } else if (event.key === 'End') {
+      nextTab = tabs[tabs.length - 1];
+    }
+
+    if (nextTab) {
+      event.preventDefault();
+      setActiveTab(nextTab);
+      requestAnimationFrame(() => {
+        document.getElementById(`dashboard-tab-${nextTab}`)?.focus();
+      });
+    }
+  };
+
   const handleRefresh = async () => {
     try {
       const refreshed = await fetchPortfolio({ refresh: true });
@@ -728,6 +752,8 @@ export const Dashboard: React.FC = () => {
                   role="tab"
                   aria-selected={activeTab === 'positions'}
                   aria-controls="dashboard-panel-positions"
+                  tabIndex={activeTab === 'positions' ? 0 : -1}
+                  onKeyDown={handleMainTabKeyDown}
                   onClick={() => setActiveTab('positions')}
                   className={`px-4 py-3 text-nav-link border-b-2 transition-colors ${
                     activeTab === 'positions'
@@ -743,6 +769,8 @@ export const Dashboard: React.FC = () => {
                   role="tab"
                   aria-selected={activeTab === 'history'}
                   aria-controls="dashboard-panel-history"
+                  tabIndex={activeTab === 'history' ? 0 : -1}
+                  onKeyDown={handleMainTabKeyDown}
                   onClick={() => setActiveTab('history')}
                   className={`px-4 py-3 text-nav-link border-b-2 transition-colors ${
                     activeTab === 'history'
@@ -755,7 +783,6 @@ export const Dashboard: React.FC = () => {
               </div>
               {activeTab === 'positions' && (
                 <div
-                  role="tablist"
                   aria-label="持仓资产类型筛选"
                   className="flex items-center gap-2 overflow-x-auto pb-1"
                 >
@@ -765,8 +792,7 @@ export const Dashboard: React.FC = () => {
                       <button
                         key={filter.value}
                         type="button"
-                        role="tab"
-                        aria-selected={isActive}
+                        aria-pressed={isActive}
                         onClick={() => setAssetFilter(filter.value)}
                         style={{
                           height: '34px',
