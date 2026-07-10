@@ -1,4 +1,5 @@
 import os
+import inspect
 import sys
 import tempfile
 import unittest
@@ -123,6 +124,61 @@ class PortfolioHistoryMigrationCompatTestCase(unittest.TestCase):
             snapshot = PortfolioHistorySnapshot.query.filter_by(user_id=user.id, settlement_currency='CNY').one()
             self.assertEqual(snapshot.total_current_value, 1200)
             self.assertEqual(snapshot.total_profit, 200)
+            self.assertIn('live_portfolio', snapshot.payload)
+
+    def test_migration_live_portfolio_is_non_destructive(self):
+        with app.app_context():
+            user = User(username='alice', email='alice@example.com')
+            user.set_password('samepass123')
+            db.session.add(user)
+            db.session.flush()
+            asset = Asset(
+                user_id=user.id,
+                name='Legacy commodity',
+                symbol='GLD',
+                asset_type='commodity',
+                buy_price=50,
+                quantity=2,
+                currency='CNY',
+            )
+            db.session.add(asset)
+            db.session.commit()
+
+            original_currency = asset.currency
+            commit_callers = []
+
+            def fake_rate(from_currency, to_currency):
+                if from_currency == to_currency:
+                    return 1.0
+                if (from_currency, to_currency) == ('USD', 'CNY'):
+                    return 7.0
+                return 1.0
+
+            def guarded_commit():
+                caller = inspect.stack()[1].filename
+                commit_callers.append(caller)
+                self.assertFalse(caller.endswith(os.path.join('routes', 'prices.py')))
+                return original_commit()
+
+            price_data = {
+                'current_price': 60,
+                'previous_close': 55,
+                'currency': 'USD',
+                'source': 'test',
+                'quote_time': None,
+            }
+            original_commit = db.session.commit
+            with patch('services.price_fetcher.PriceFetcher.get_price', return_value=price_data):
+                with patch('services.price_fetcher.PriceFetcher.get_exchange_rate', side_effect=fake_rate):
+                    with patch.object(db.session, 'commit', side_effect=guarded_commit):
+                        migrated = migrate_portfolio_history()
+
+            self.assertEqual(migrated, 1)
+            self.assertEqual(len(commit_callers), 1)
+            after_asset = db.session.get(Asset, asset.id)
+            self.assertEqual(after_asset.currency, original_currency)
+            snapshot = PortfolioHistorySnapshot.query.filter_by(user_id=user.id, settlement_currency='CNY').one()
+            self.assertEqual(snapshot.total_current_value, 840)
             self.assertIn('live_portfolio', snapshot.payload)
 
     def test_migration_fallback_converts_multi_currency_cost_basis(self):

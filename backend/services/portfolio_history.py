@@ -4,7 +4,34 @@ from datetime import date
 from db import db
 from models import Asset, PortfolioHistorySnapshot, User
 from routes.prices import SUPPORTED_SETTLEMENT_CURRENCIES, _build_portfolio_payload
+from services.currency_rules import currency_for_asset_type
 from services.price_fetcher import PriceFetcher
+
+
+class _HistoryLiveAssetView:
+    def __init__(self, asset):
+        self.id = asset.id
+        self.name = asset.name
+        self.symbol = asset.symbol
+        self.asset_type = asset.asset_type
+        self.buy_price = asset.buy_price
+        self.quantity = asset.quantity
+        self.currency = currency_for_asset_type(asset.asset_type)
+        self.created_at = asset.created_at
+        self.updated_at = asset.updated_at
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'symbol': self.symbol,
+            'asset_type': self.asset_type,
+            'buy_price': self.buy_price,
+            'quantity': self.quantity,
+            'currency': self.currency,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+        }
 
 
 def _baseline_payload_from_assets(user_id, settlement_currency):
@@ -50,7 +77,8 @@ def build_history_snapshot_payload(user, settlement_currency, *, use_live_prices
     assets = Asset.query.filter_by(user_id=user.id).all()
     if use_live_prices and assets:
         try:
-            portfolio_payload = _build_portfolio_payload(user, assets, settlement_currency, 'ORIGINAL')
+            live_assets = [_HistoryLiveAssetView(asset) for asset in assets]
+            portfolio_payload = _build_portfolio_payload(user, live_assets, settlement_currency, 'ORIGINAL')
             summary = portfolio_payload['summary']
             return {
                 'total_investment': summary['total_investment'],
