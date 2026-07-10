@@ -153,6 +153,7 @@ export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryData | null>(null);
+  const [portfolioHistoryError, setPortfolioHistoryError] = useState('');
   const [records, setRecords] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -224,11 +225,13 @@ export const Dashboard: React.FC = () => {
 
   const fetchPortfolioHistory = useCallback(async () => {
     try {
+      setPortfolioHistoryError('');
       const params = new URLSearchParams({ currency: settlementCurrency });
       const data = await api.get<PortfolioHistoryData>(`/portfolio/history?${params.toString()}`);
       setPortfolioHistory(data);
     } catch (error) {
       console.error('获取组合历史净值失败:', error);
+      setPortfolioHistoryError(error instanceof Error ? error.message : '历史净值加载失败');
     }
   }, [settlementCurrency]);
 
@@ -345,6 +348,7 @@ export const Dashboard: React.FC = () => {
       ]);
     } catch (error) {
       console.error('刷新组合数据失败:', error);
+      setPortfolioHistoryError(error instanceof Error ? error.message : '历史净值快照生成失败');
     }
   };
 
@@ -690,10 +694,12 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {portfolioHistory && (
+      {(portfolioHistory || portfolioHistoryError) && (
         <PortfolioHistoryChart
-          currency={portfolioHistory.currency}
-          points={portfolioHistory.points}
+          currency={portfolioHistory?.currency || settlementCurrency}
+          points={portfolioHistory?.points || []}
+          error={portfolioHistoryError}
+          onRetry={fetchPortfolioHistory}
         />
       )}
 
