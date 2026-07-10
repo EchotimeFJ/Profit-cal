@@ -4,6 +4,7 @@ Flask-JWT-Extended==4.7.4
 Flask-CORS==6.0.2
 SQLAlchemy==2.0.23
 requests==2.31.0
+urllib3<2
 python-dotenv==1.0.0
 Werkzeug==3.0.1
 gunicorn==23.0.0
