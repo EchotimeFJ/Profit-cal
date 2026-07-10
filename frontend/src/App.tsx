@@ -6,6 +6,7 @@ import { Register } from './pages/Register';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { Dashboard } from './pages/Dashboard';
 import { Assets } from './pages/Assets';
+import { AssetDetail } from './pages/AssetDetail';
 import { Alerts } from './pages/Alerts';
 import { Settings } from './pages/Settings';
 import { api } from './lib/api';
@@ -67,6 +68,14 @@ const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/assets/:id/detail"
+        element={
+          <ProtectedRoute>
+            <AssetDetail />
           </ProtectedRoute>
         }
       />

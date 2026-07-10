@@ -94,6 +94,47 @@ export interface PortfolioData {
   cached?: boolean;
 }
 
+export interface AssetDetailPerformance {
+  investment: number;
+  current_value: number | null;
+  unrealized_profit: number | null;
+  unrealized_profit_percent: number | null;
+  daily_profit: number | null;
+  daily_profit_percent: number | null;
+  realized_profit: number;
+  realized_profit_percent: number | null;
+}
+
+export interface AssetDetailPrice {
+  current_price: number | null;
+  previous_close: number | null;
+  currency: string;
+  source: string | null;
+  quote_time: string | null;
+  error: string | null;
+}
+
+export interface AssetDetailData {
+  asset: Asset;
+  price: AssetDetailPrice;
+  performance: AssetDetailPerformance;
+  records: TradeRecord[];
+}
+
+export interface PortfolioHistoryPoint {
+  date: string;
+  total_investment: number;
+  total_current_value: number;
+  total_profit: number;
+  total_profit_percent: number;
+  daily_profit: number;
+}
+
+export interface PortfolioHistoryData {
+  currency: string;
+  points: PortfolioHistoryPoint[];
+}
+
 export interface AuthState {
   user: User | null;
   token: string | null;

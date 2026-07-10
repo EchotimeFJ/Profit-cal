@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
@@ -148,6 +148,7 @@ const getAlertActionLabel = (alertType: string) => {
 
 export const Dashboard: React.FC = () => {
   const { user, updateUser } = useAuth();
+  const navigate = useNavigate();
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [records, setRecords] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -785,6 +786,7 @@ export const Dashboard: React.FC = () => {
                       setSellingAsset(asset);
                       setSellFormData({ sell_price: '', quantity: '', amount: '' });
                     }}
+                    onViewDetail={() => navigate(`/assets/${asset.id}/detail`)}
                   />
                 </motion.div>
               ))}
@@ -1094,7 +1096,8 @@ const PositionCard: React.FC<{
   pnlExchangeRates?: Record<string, Record<string, number>>;
   onAddPosition: () => void;
   onSell: () => void;
-}> = ({ asset, pnlDisplayMode, pnlExchangeRates, onAddPosition, onSell }) => {
+  onViewDetail: () => void;
+}> = ({ asset, pnlDisplayMode, pnlExchangeRates, onAddPosition, onSell, onViewDetail }) => {
   const displayedProfit = convertPnlValue(asset.profit, asset.currency, pnlDisplayMode, pnlExchangeRates);
   const displayedDailyProfit = convertPnlValue(asset.daily_profit, asset.currency, pnlDisplayMode, pnlExchangeRates);
   const totalProfitColor = ((displayedProfit?.value ?? 0) >= 0) ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
@@ -1164,7 +1167,10 @@ const PositionCard: React.FC<{
           </div>
         </div>
 
-        <div className="flex min-w-0 gap-2 xl:w-[200px] xl:flex-none">
+        <div className="flex min-w-0 gap-2 xl:w-[280px] xl:flex-none">
+          <Button variant="ghost" onClick={onViewDetail} className="min-w-0 flex-1 px-3">
+            详情
+          </Button>
           <Button variant="secondary" onClick={onAddPosition} className="min-w-0 flex-1 px-3">
             <Plus className="mr-1 h-4 w-4 shrink-0" />
             加仓
