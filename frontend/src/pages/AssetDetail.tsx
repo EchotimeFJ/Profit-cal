@@ -28,6 +28,16 @@ const formatDateTime = (value: string | null | undefined) => {
   return date.toLocaleString('zh-CN', { hour12: false });
 };
 
+const formatQuoteTime = (value: string | null | undefined) => {
+  if (!value) return '';
+  if (/^\d{14}$/.test(value)) {
+    const normalized = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(8, 10)}:${value.slice(10, 12)}:${value.slice(12, 14)}`;
+    return formatDateTime(normalized);
+  }
+  const formatted = formatDateTime(value);
+  return formatted === value ? '' : formatted;
+};
+
 const initialTradeFormData = {
   price: '',
   quantity: '',
@@ -199,6 +209,7 @@ export const AssetDetail: React.FC = () => {
 
   const { asset, price, performance, records } = data;
   const tradeCurrency = asset.currency;
+  const quoteTime = formatQuoteTime(price.quote_time);
 
   return (
     <div className="mx-auto max-w-[1120px] space-y-5 p-4 sm:p-6">
@@ -245,9 +256,11 @@ export const AssetDetail: React.FC = () => {
           <p className="mt-2 font-number text-title-lg font-semibold text-ink">
             {price.current_price !== null ? formatAssetPrice(price.current_price, asset.currency, asset.asset_type) : '--'}
           </p>
-          <p className="mt-1 text-body-sm text-muted">
-            {price.source || '暂无来源'} {formatDateTime(price.quote_time)}
-          </p>
+          {quoteTime && (
+            <p className="mt-1 text-body-sm text-muted">
+              更新时间 {quoteTime}
+            </p>
+          )}
           {price.error && <p className="mt-2 text-body-sm text-semantic-down">{price.error}</p>}
         </div>
         <div className="card-light p-5">
@@ -514,7 +527,7 @@ export const AssetDetail: React.FC = () => {
                 </div>
 
                 <div className="rounded-xl bg-surface-soft px-4 py-3 text-body-sm text-muted">
-                  如果卖出数量等于当前持仓，详情页会显示已清仓状态，交易历史会完整保留。
+                  如果卖出全部数量，当前持仓会被移除，交易历史会完整保留。
                 </div>
 
                 <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row">
