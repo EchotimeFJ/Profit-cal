@@ -928,7 +928,7 @@ export const Dashboard: React.FC = () => {
                   还没有交易记录
                 </p>
                 <p style={{ fontSize: '14px', color: 'var(--color-muted)' }}>
-                  买入、卖出和清仓都会在这里保留历史。
+                  买入和卖出都会在这里保留历史。
                 </p>
               </div>
             ) : (
@@ -1241,8 +1241,8 @@ const PositionCard: React.FC<{
   const dailyProfitColor = ((displayedDailyProfit?.value ?? 0) >= 0) ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
 
   return (
-    <div className="rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5 sm:py-5">
-      <div className="flex flex-col gap-4 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4 2xl:flex-nowrap">
+    <div className="overflow-hidden rounded-2xl border border-hairline bg-canvas px-4 py-4 sm:px-5 sm:py-5">
+      <div className="flex flex-col gap-4 xl:flex-row xl:flex-wrap xl:items-center xl:gap-4">
         <div className="flex min-w-0 items-center gap-4 xl:w-[220px] xl:flex-none">
           <div className="h-14 w-14 rounded-full bg-surface-soft flex items-center justify-center shrink-0">
             <span className="text-[14px] font-semibold text-ink">
@@ -1304,15 +1304,15 @@ const PositionCard: React.FC<{
           </div>
         </div>
 
-        <div className="flex min-w-0 gap-2 xl:w-[280px] xl:flex-none">
-          <Button variant="ghost" onClick={onViewDetail} className="min-w-0 flex-1 px-3">
+        <div className="grid w-full min-w-0 grid-cols-3 gap-2 xl:w-[280px] xl:flex-none">
+          <Button variant="ghost" onClick={onViewDetail} className="min-w-0 px-3">
             详情
           </Button>
-          <Button variant="secondary" onClick={onAddPosition} className="min-w-0 flex-1 px-3">
+          <Button variant="secondary" onClick={onAddPosition} className="min-w-0 px-3">
             <Plus className="mr-1 h-4 w-4 shrink-0" />
             加仓
           </Button>
-          <Button variant="outline" onClick={onSell} className="min-w-0 flex-1 px-3">
+          <Button variant="outline" onClick={onSell} className="min-w-0 px-3">
             <Banknote className="mr-1 h-4 w-4 shrink-0" />
             卖出
           </Button>
@@ -1330,7 +1330,7 @@ const PositionMetric: React.FC<{
   <div className="min-w-0">
     <p className="text-body-sm text-muted">{label}</p>
     <p
-      className={`mt-1 whitespace-nowrap ${strong ? 'font-number text-title-sm font-semibold text-ink' : 'text-body-sm text-ink'}`}
+      className={`mt-1 truncate whitespace-nowrap ${strong ? 'font-number text-title-sm font-semibold text-ink' : 'text-body-sm text-ink'}`}
       title={value}
     >
       {value}

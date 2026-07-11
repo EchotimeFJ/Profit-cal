@@ -71,13 +71,16 @@ export const Assets: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
   const [showModal, setShowModal] = useState(false);
   const [editingAsset, setEditingAsset] = useState<Asset | null>(null);
+  const [addingAsset, setAddingAsset] = useState<Asset | null>(null);
   const [sellingAsset, setSellingAsset] = useState<Asset | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [addPositionSubmitting, setAddPositionSubmitting] = useState(false);
   const [sellSubmitting, setSellSubmitting] = useState(false);
   const assetDialogRef = useRef<HTMLDivElement>(null);
+  const addPositionDialogRef = useRef<HTMLDivElement>(null);
   const sellDialogRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
@@ -94,6 +97,12 @@ export const Assets: React.FC = () => {
     quantity: '',
     amount: '',
   });
+  const [addPositionFormData, setAddPositionFormData] = useState({
+    buy_price: '',
+    quantity: '',
+    amount: '',
+  });
+  const addPositionCurrency = addingAsset?.currency || formData.currency;
   const sellCurrency = sellingAsset?.currency || formData.currency;
 
   const resetForm = useCallback(() => {
@@ -120,7 +129,13 @@ export const Assets: React.FC = () => {
     setSellingAsset(null);
   }, []);
 
+  const closeAddPositionModal = useCallback(() => {
+    if (addPositionSubmitting) return;
+    setAddingAsset(null);
+  }, [addPositionSubmitting]);
+
   useDialogA11y(showModal, closeAssetModal, assetDialogRef);
+  useDialogA11y(Boolean(addingAsset), closeAddPositionModal, addPositionDialogRef);
   useDialogA11y(Boolean(sellingAsset), closeSellModal, sellDialogRef);
 
   const fetchAssets = async () => {
@@ -241,6 +256,41 @@ export const Assets: React.FC = () => {
     });
   };
 
+  const handleAddPosition = (asset: Asset) => {
+    setAddingAsset(asset);
+    setAddPositionFormData({
+      buy_price: '',
+      quantity: '',
+      amount: '',
+    });
+  };
+
+  const handleAddPositionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (addPositionSubmitting) return;
+
+    if (!addingAsset) return;
+    setAddPositionSubmitting(true);
+
+    try {
+      await api.post(`/assets/${addingAsset.id}/add-position`, {
+        buy_price: parseFloat(addPositionFormData.buy_price),
+        quantity: addPositionFormData.quantity ? parseFloat(addPositionFormData.quantity) : undefined,
+        amount: addPositionFormData.amount ? parseFloat(addPositionFormData.amount) : undefined,
+      });
+
+      closeAddPositionModal();
+      setAddPositionFormData({ buy_price: '', quantity: '', amount: '' });
+      fetchAssets();
+      fetchHistory();
+      setActiveTab('positions');
+    } catch (error: any) {
+      alert(error.message || '买入失败');
+    } finally {
+      setAddPositionSubmitting(false);
+    }
+  };
+
   const handleSellSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (sellSubmitting) return;
@@ -359,15 +409,19 @@ export const Assets: React.FC = () => {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 sm:ml-4">
-                      <Button variant="outline" size="sm" onClick={() => handleSell(asset)} className="flex-1 sm:flex-none">
-                        <Banknote className="w-4 h-4 mr-1" />
-                        卖出/清仓
+                    <div className="grid w-full grid-cols-2 gap-2 sm:ml-4 sm:w-auto sm:flex sm:items-center">
+                      <Button variant="secondary" size="sm" onClick={() => handleAddPosition(asset)} className="min-w-0">
+                        <Plus className="w-4 h-4 mr-1" />
+                        买入
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(asset)}>
+                      <Button variant="outline" size="sm" onClick={() => handleSell(asset)} className="min-w-0">
+                        <Banknote className="w-4 h-4 mr-1" />
+                        卖出
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(asset)} className="min-w-0">
                         <Edit2 className="w-4 h-4" />
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(asset.id)}>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(asset.id)} className="min-w-0">
                         <Trash2 className="w-4 h-4 text-semantic-down" />
                       </Button>
                     </div>
@@ -387,7 +441,7 @@ export const Assets: React.FC = () => {
                   <History className="w-8 h-8 text-muted" />
                 </div>
                 <h3 className="text-title-md font-semibold text-ink mb-2">还没有交易记录</h3>
-                <p className="text-body text-muted">添加资产会记录买入，卖出或清仓会记录已实现盈亏</p>
+                <p className="text-body text-muted">添加资产和买入会记录买入，卖出会记录已实现盈亏</p>
               </CardContent>
             </Card>
           ) : (
@@ -640,6 +694,106 @@ export const Assets: React.FC = () => {
           </div>
         )}
 
+        {addingAsset && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-0">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm"
+              onClick={closeAddPositionModal}
+            />
+            <motion.div
+              ref={addPositionDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="asset-add-position-dialog-title"
+              tabIndex={-1}
+              initial={{ opacity: 0, y: '100%', scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: '100%', scale: 0.95 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="relative w-full sm:max-w-lg bg-canvas rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden"
+            >
+              <div className="flex items-center justify-between px-6 py-5 border-b border-hairline">
+                <div>
+                  <h2 id="asset-add-position-dialog-title" className="text-title-md font-semibold text-ink">买入/加仓</h2>
+                  <p className="text-body-sm text-muted mt-1">
+                    {addingAsset.name} · 当前持有 {formatAssetQuantity(addingAsset.quantity, addingAsset.asset_type)}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={closeAddPositionModal}
+                  disabled={addPositionSubmitting}
+                  aria-label="关闭买入弹窗"
+                >
+                  <X className="w-5 h-5" />
+                </Button>
+              </div>
+
+              <form onSubmit={handleAddPositionSubmit} className="px-6 py-6 space-y-5">
+                <div>
+                  <label htmlFor="asset-add-position-buy-price" className="block text-caption font-medium text-ink mb-2">
+                    买入价
+                  </label>
+                  <Input
+                    id="asset-add-position-buy-price"
+                    type="number"
+                    step="0.001"
+                    value={addPositionFormData.buy_price}
+                    onChange={(e) => setAddPositionFormData({ ...addPositionFormData, buy_price: e.target.value })}
+                    placeholder="买入价格"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label htmlFor="asset-add-position-quantity" className="block text-caption font-medium text-ink mb-2">
+                      数量
+                    </label>
+                    <Input
+                      id="asset-add-position-quantity"
+                      type="number"
+                      step="0.000001"
+                      value={addPositionFormData.quantity}
+                      onChange={(e) => setAddPositionFormData({ ...addPositionFormData, quantity: e.target.value, amount: '' })}
+                      placeholder="数量"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="asset-add-position-amount" className="block text-caption font-medium text-ink mb-2">
+                      或金额
+                    </label>
+                    <CurrencyAmountInput
+                      id="asset-add-position-amount"
+                      currency={addPositionCurrency}
+                      value={addPositionFormData.amount}
+                      onChange={(value) => setAddPositionFormData({ ...addPositionFormData, amount: value, quantity: '' })}
+                      placeholder="买入金额"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl bg-surface-soft px-4 py-3 text-body-sm text-muted">
+                  填写数量或金额其中之一即可，提交后会按加权平均法刷新当前持仓成本价。
+                </div>
+
+                <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
+                  <Button type="submit" disabled={addPositionSubmitting} className="flex-1">
+                    {addPositionSubmitting ? '提交中...' : '确认买入'}
+                  </Button>
+                  <Button type="button" variant="secondary" onClick={closeAddPositionModal}>
+                    取消
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
         {sellingAsset && (
           <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-0">
             <motion.div
@@ -731,7 +885,7 @@ export const Assets: React.FC = () => {
                 </div>
 
                 <div className="rounded-xl bg-surface-soft px-4 py-3 text-body-sm text-muted">
-                  卖出会记录到交易历史并计算已实现盈亏；如果卖出数量等于当前持仓，将自动清仓。
+                  卖出会记录到交易历史并计算已实现盈亏；如果卖出全部数量，将从当前持仓移除。
                 </div>
 
                 <div className="flex flex-col-reverse sm:flex-row gap-3 pt-2">
