@@ -1,16 +1,17 @@
-import React, { useId, useState } from 'react';
+import React, { useId } from 'react';
 import { formatCurrency, formatPercent } from '../lib/utils';
-import { PortfolioHistoryPoint } from '../types';
+import { PortfolioHistoryPoint, PortfolioHistoryRange } from '../types';
 
 interface PortfolioHistoryChartProps {
   currency: string;
   points: PortfolioHistoryPoint[];
+  selectedRange: PortfolioHistoryRange;
+  onRangeChange: (range: PortfolioHistoryRange) => void;
   error?: string;
   onRetry?: () => void;
 }
 
 type MetricKey = 'total_current_value' | 'total_profit';
-type HistoryRange = 1 | 3 | 7;
 
 const chartWidth = 720;
 const chartHeight = 188;
@@ -18,7 +19,11 @@ const chartTopPadding = 14;
 const chartRightPadding = 14;
 const chartBottomPadding = 34;
 const chartLeftPadding = 86;
-const historyRanges: HistoryRange[] = [1, 3, 7];
+const historyRanges: Array<{ value: PortfolioHistoryRange; label: string }> = [
+  { value: '1d', label: '1日' },
+  { value: '3d', label: '3日' },
+  { value: '7d', label: '7日' },
+];
 
 const isFiniteNumber = (value: unknown): value is number => (
   typeof value === 'number' && Number.isFinite(value)
@@ -70,28 +75,6 @@ const validMetricPoints = (points: unknown, key: MetricKey) => (
   normalizeHistoryPoints(points).filter((point) => isFiniteNumber(metricPointValue(point, key)))
 );
 
-const parsePointDate = (dateValue: string) => {
-  const date = new Date(`${dateValue}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-};
-
-const filterPointsByRange = (points: PortfolioHistoryPoint[], range: HistoryRange) => {
-  const validDatedPoints = points.filter((point) => parsePointDate(point.date));
-  const latest = validDatedPoints[validDatedPoints.length - 1];
-  const latestDate = latest ? parsePointDate(latest.date) : null;
-
-  if (!latestDate) return points;
-
-  const startDate = new Date(latestDate);
-  startDate.setDate(latestDate.getDate() - (range - 1));
-  startDate.setHours(0, 0, 0, 0);
-
-  return points.filter((point) => {
-    const pointDate = parsePointDate(point.date);
-    return pointDate ? pointDate >= startDate && pointDate <= latestDate : false;
-  });
-};
-
 const chartBounds = {
   left: chartLeftPadding,
   top: chartTopPadding,
@@ -142,26 +125,62 @@ const buildPath = (metricPoints: PortfolioHistoryPoint[], key: MetricKey) => {
     .join(' ');
 };
 
-const formatDateLabel = (dateValue: string) => {
-  const date = new Date(`${dateValue}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return dateValue;
-  return date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+const pointTimeValue = (point: PortfolioHistoryPoint) => point.timestamp || point.date || '';
+
+const normalizeUtcTimeValue = (value: string) => {
+  if (!value) return value;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return `${value}T00:00:00Z`;
+  if (/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) return value;
+  if (/[T\s]\d{2}:\d{2}/.test(value)) return `${value.replace(' ', 'T')}Z`;
+  return value;
 };
 
-const formatAxisDateLabel = (dateValue: string, range: HistoryRange) => {
-  if (range === 1) return formatDateLabel(dateValue);
-  return formatDateLabel(dateValue);
+const parsePointTime = (point: PortfolioHistoryPoint) => {
+  const value = pointTimeValue(point);
+  const date = new Date(normalizeUtcTimeValue(value));
+  if (!Number.isNaN(date.getTime())) return date;
+  return null;
 };
 
-const xAxisLabels = (points: PortfolioHistoryPoint[], range: HistoryRange) => {
+const formatDateLabel = (point: PortfolioHistoryPoint) => {
+  const date = parsePointTime(point);
+  if (!date) return pointTimeValue(point);
+  return date.toLocaleString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+};
+
+const formatAxisDateLabel = (point: PortfolioHistoryPoint, range: PortfolioHistoryRange) => {
+  const date = parsePointTime(point);
+  if (!date) return pointTimeValue(point);
+  if (range === '1d') {
+    return date.toLocaleTimeString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+  return date.toLocaleString('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    hour12: false,
+  });
+};
+
+const xAxisLabels = (points: PortfolioHistoryPoint[], range: PortfolioHistoryRange) => {
   if (points.length === 0) return [];
   if (points.length <= 4) {
-    return points.map((point, index) => ({ point, index, label: formatAxisDateLabel(point.date, range) }));
+    return points.map((point, index) => ({ point, index, label: formatAxisDateLabel(point, range) }));
   }
 
   const labelIndexes = new Set([0, Math.floor((points.length - 1) / 2), points.length - 1]);
   return points
-    .map((point, index) => ({ point, index, label: formatAxisDateLabel(point.date, range) }))
+    .map((point, index) => ({ point, index, label: formatAxisDateLabel(point, range) }))
     .filter((item) => labelIndexes.has(item.index));
 };
 
@@ -171,7 +190,7 @@ const MiniMetricChart: React.FC<{
   currency: string;
   points: PortfolioHistoryPoint[];
   metricKey: MetricKey;
-  range: HistoryRange;
+  range: PortfolioHistoryRange;
   stroke: string;
   dashed?: boolean;
 }> = ({ title, description, currency, points, metricKey, range, stroke, dashed = false }) => {
@@ -208,13 +227,13 @@ const MiniMetricChart: React.FC<{
         role="img"
         aria-labelledby={`${titleId} ${descId}`}
         viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-        className="h-44 min-w-[620px] w-full"
+        className="h-44 w-full min-w-0"
       >
         <title id={titleId}>{title}</title>
         <desc id={descId}>
           {description}
           {first && latest
-            ? `，时间范围 ${formatDateLabel(first.date)} 至 ${formatDateLabel(latest.date)}，最新值 ${formatCurrency(metricPointValue(latest, metricKey), currency)}。`
+            ? `，时间范围 ${formatDateLabel(first)} 至 ${formatDateLabel(latest)}，最新值 ${formatCurrency(metricPointValue(latest, metricKey), currency)}。`
             : '，暂无有效点位。'}
         </desc>
         <line
@@ -258,7 +277,7 @@ const MiniMetricChart: React.FC<{
           const x = pointCoordinates(metricPointValue(point, metricKey), index, metricPoints.length, min, max).x;
           return (
             <text
-              key={`${point.date}-${index}`}
+              key={`${pointTimeValue(point)}-${index}`}
               x={x}
               y={chartBounds.bottom + 24}
               textAnchor={metricPoints.length === 1 ? 'end' : index === 0 ? 'start' : index === metricPoints.length - 1 ? 'end' : 'middle'}
@@ -305,16 +324,21 @@ const MiniMetricChart: React.FC<{
   );
 };
 
-export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ currency, points, error, onRetry }) => {
-  const [selectedRange, setSelectedRange] = useState<HistoryRange>(7);
+export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({
+  currency,
+  points,
+  selectedRange,
+  onRangeChange,
+  error,
+  onRetry,
+}) => {
   const safePoints = normalizeHistoryPoints(points);
-  const visiblePoints = filterPointsByRange(safePoints, selectedRange);
-  const latest = visiblePoints[visiblePoints.length - 1] || safePoints[safePoints.length - 1];
-  const first = visiblePoints[0];
+  const latest = safePoints[safePoints.length - 1];
+  const first = safePoints[0];
   const latestProfitColor = (latest?.total_profit ?? 0) >= 0 ? 'var(--color-semantic-up)' : 'var(--color-semantic-down)';
   const hasAnyPoints = (
-    validMetricPoints(visiblePoints, 'total_current_value').length > 0 ||
-    validMetricPoints(visiblePoints, 'total_profit').length > 0
+    validMetricPoints(safePoints, 'total_current_value').length > 0 ||
+    validMetricPoints(safePoints, 'total_profit').length > 0
   );
 
   return (
@@ -324,24 +348,24 @@ export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ cu
           <p className="text-body-sm text-muted">组合历史净值</p>
           <h2 className="text-title-sm font-semibold text-ink">总市值与累计收益趋势</h2>
           <p className="mt-1 text-body-sm text-muted">
-            基于手动刷新生成的每日快照，历史查询不会写入数据。
+            系统自动记录组合历史，后台采集完成后会按所选时间范围展示分钟级快照。
           </p>
         </div>
         <div className="flex flex-col gap-3 lg:items-end">
           <div className="inline-flex rounded-full border border-hairline bg-surface-soft p-1" aria-label="选择历史净值时间范围">
             {historyRanges.map((range) => (
               <button
-                key={range}
+                key={range.value}
                 type="button"
-                onClick={() => setSelectedRange(range)}
+                onClick={() => onRangeChange(range.value)}
                 className={`rounded-full px-3 py-1.5 text-caption font-semibold transition-colors ${
-                  selectedRange === range
+                  selectedRange === range.value
                     ? 'bg-coinbase-blue text-white'
                     : 'text-muted hover:text-ink'
                 }`}
-                aria-pressed={selectedRange === range}
+                aria-pressed={selectedRange === range.value}
               >
-                {range}日
+                {range.label}
               </button>
             ))}
           </div>
@@ -370,18 +394,18 @@ export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ cu
         </div>
       ) : !hasAnyPoints ? (
         <div className="mt-5 rounded-2xl border border-dashed border-hairline bg-surface-soft p-6 text-center">
-          <p className="text-body-sm font-semibold text-ink">暂无足够历史数据</p>
-          <p className="mt-1 text-body-sm text-muted">暂无足够历史数据，今天开始记录。</p>
-          <p className="mt-1 text-caption text-muted">点击刷新会生成或更新今天的组合快照。</p>
+          <p className="text-body-sm font-semibold text-ink">暂无自动历史快照</p>
+          <p className="mt-1 text-body-sm text-muted">后台分钟级采集运行后，这里会自动显示组合历史曲线。</p>
+          <p className="mt-1 text-caption text-muted">当前视图不会提示手动刷新来生成历史数据。</p>
         </div>
       ) : (
-        <div className="mt-5 overflow-x-auto">
-          <div className="grid min-w-[620px] gap-3">
+        <div className="mt-5 overflow-hidden">
+          <div className="grid min-w-0 gap-3">
             <MiniMetricChart
               title="总市值趋势"
               description="左侧为金额纵轴，底部为时间轴"
               currency={currency}
-              points={visiblePoints}
+              points={safePoints}
               metricKey="total_current_value"
               range={selectedRange}
               stroke="var(--color-coinbase-blue)"
@@ -390,7 +414,7 @@ export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ cu
               title="累计收益趋势"
               description="左侧为金额纵轴，底部为时间轴"
               currency={currency}
-              points={visiblePoints}
+              points={safePoints}
               metricKey="total_profit"
               range={selectedRange}
               stroke="var(--color-semantic-up)"
@@ -410,7 +434,7 @@ export const PortfolioHistoryChart: React.FC<PortfolioHistoryChartProps> = ({ cu
             </div>
             {first && latest && (
               <span>
-                {selectedRange}日 · {formatDateLabel(first.date)} 至 {formatDateLabel(latest.date)}
+                {historyRanges.find((range) => range.value === selectedRange)?.label} · {formatDateLabel(first)} 至 {formatDateLabel(latest)}
               </span>
             )}
           </div>

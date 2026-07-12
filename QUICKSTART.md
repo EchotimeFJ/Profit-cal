@@ -65,7 +65,19 @@ procal restart
 procal status
 ```
 
-### 4. 每天结束时
+### 4. 部署分钟级组合历史采集
+```bash
+crontab -e
+```
+
+加入以下任务，让后端每分钟自动沉淀组合历史快照：
+```cron
+* * * * * cd /Users/bytedance/ai-projects/profit-cal/backend && ./venv/bin/python scripts/collect_portfolio_minute_history.py >> portfolio_minute_history.log 2>&1
+```
+
+该命令只写入新的分钟级历史快照，不会修改旧资产、交易、提醒或日级历史数据。
+
+### 5. 每天结束时
 ```bash
 procal stop
 ```

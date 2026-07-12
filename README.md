@@ -156,6 +156,22 @@ npm install
 npm run build
 ```
 
+## 分钟级历史采集
+
+组合历史净值依赖后台分钟级快照。部署后先确认后端依赖已安装，再用 cron 每分钟执行采集脚本：
+
+```bash
+crontab -e
+```
+
+加入以下任务（按实际部署路径调整项目目录和 Python 路径）：
+
+```cron
+* * * * * cd /Users/bytedance/ai-projects/profit-cal/backend && ./venv/bin/python scripts/collect_portfolio_minute_history.py >> portfolio_minute_history.log 2>&1
+```
+
+该脚本会自动确保分钟级快照表存在，并为所有用户按首选结算币种采集当前分钟快照；它只写入新的分钟级历史表，不会修改资产、交易、提醒或旧的日级历史数据。
+
 ## 🌐 服务端口
 
 - **前端**: http://localhost:3000

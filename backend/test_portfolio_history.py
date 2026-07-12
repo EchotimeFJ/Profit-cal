@@ -2,7 +2,7 @@ import os
 import sys
 import tempfile
 import unittest
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 
@@ -35,13 +35,30 @@ class PortfolioHistoryTestCase(unittest.TestCase):
         self.assertEqual(register.status_code, 201)
         self.headers = {'Authorization': f"Bearer {register.get_json()['access_token']}"}
 
+    def _add_minute_snapshot(self, user, snapshot_minute, currency='CNY', total_current_value=1000):
+        snapshot = PortfolioMinuteSnapshot(
+            user_id=user.id,
+            snapshot_minute=snapshot_minute.replace(second=0, microsecond=0),
+            settlement_currency=currency,
+            total_investment=900,
+            total_current_value=total_current_value,
+            total_profit=total_current_value - 900,
+            total_profit_percent=((total_current_value - 900) / 900) * 100,
+            daily_profit=total_current_value - 950,
+        )
+        db.session.add(snapshot)
+        return snapshot
+
     def test_get_history_empty_without_writing(self):
         response = self.client.get('/api/portfolio/history', headers=self.headers)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.get_json()['points'], [])
+        data = response.get_json()
+        self.assertEqual(data['range'], '1d')
+        self.assertEqual(data['points'], [])
         with app.app_context():
             self.assertEqual(PortfolioHistorySnapshot.query.count(), 0)
+            self.assertEqual(PortfolioMinuteSnapshot.query.count(), 0)
 
     def test_snapshot_upsert_does_not_duplicate_same_day(self):
         created = self.client.post('/api/assets', json={
@@ -63,11 +80,13 @@ class PortfolioHistoryTestCase(unittest.TestCase):
 
         history = self.client.get('/api/portfolio/history?currency=CNY', headers=self.headers)
         self.assertEqual(history.status_code, 200)
-        self.assertEqual(len(history.get_json()['points']), 1)
+        self.assertEqual(history.get_json()['points'], [])
 
     def test_history_is_user_scoped(self):
-        created = self.client.post('/api/portfolio/history/snapshot', json={'currency': 'CNY'}, headers=self.headers)
-        self.assertEqual(created.status_code, 201)
+        with app.app_context():
+            alice = User.query.filter_by(username='alice').one()
+            self._add_minute_snapshot(alice, datetime.utcnow() - timedelta(minutes=5), total_current_value=1100)
+            db.session.commit()
         register = self.client.post('/api/auth/register', json={
             'username': 'bob',
             'email': 'bob@example.com',
@@ -80,6 +99,62 @@ class PortfolioHistoryTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['points'], [])
+
+    def test_history_returns_minute_snapshots_for_range_sorted(self):
+        now = datetime.utcnow()
+        with app.app_context():
+            alice = User.query.filter_by(username='alice').one()
+            self._add_minute_snapshot(alice, now - timedelta(hours=2), total_current_value=1200)
+            self._add_minute_snapshot(alice, now - timedelta(days=4), total_current_value=1400)
+            self._add_minute_snapshot(alice, now - timedelta(hours=3), total_current_value=1100)
+            db.session.add(PortfolioHistorySnapshot(
+                user_id=alice.id,
+                snapshot_date=(now - timedelta(days=1)).date(),
+                settlement_currency='CNY',
+                total_investment=1,
+                total_current_value=9999,
+            ))
+            db.session.commit()
+
+        response = self.client.get('/api/portfolio/history?range=3d&currency=CNY', headers=self.headers)
+
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()
+        self.assertEqual(data['currency'], 'CNY')
+        self.assertEqual(data['range'], '3d')
+        self.assertEqual([point['total_current_value'] for point in data['points']], [1100, 1200])
+        self.assertEqual(
+            [point['timestamp'] for point in data['points']],
+            sorted(point['timestamp'] for point in data['points']),
+        )
+        self.assertTrue(all(point['timestamp'] == point['date'] for point in data['points']))
+
+    def test_history_defaults_to_preferred_currency_and_keeps_currency_param(self):
+        now = datetime.utcnow()
+        with app.app_context():
+            alice = User.query.filter_by(username='alice').one()
+            alice.preferred_currency = 'USD'
+            self._add_minute_snapshot(alice, now - timedelta(minutes=10), currency='USD', total_current_value=200)
+            self._add_minute_snapshot(alice, now - timedelta(minutes=9), currency='CNY', total_current_value=100)
+            db.session.commit()
+
+        default_response = self.client.get('/api/portfolio/history?range=1d', headers=self.headers)
+        cny_response = self.client.get('/api/portfolio/history?range=1d&currency=CNY', headers=self.headers)
+
+        self.assertEqual(default_response.status_code, 200)
+        self.assertEqual(default_response.get_json()['currency'], 'USD')
+        self.assertEqual([point['total_current_value'] for point in default_response.get_json()['points']], [200])
+        self.assertEqual(cny_response.status_code, 200)
+        self.assertEqual(cny_response.get_json()['currency'], 'CNY')
+        self.assertEqual([point['total_current_value'] for point in cny_response.get_json()['points']], [100])
+
+    def test_history_rejects_invalid_range_without_writing(self):
+        response = self.client.get('/api/portfolio/history?range=30d', headers=self.headers)
+
+        self.assertEqual(response.status_code, 400)
+        with app.app_context():
+            self.assertEqual(PortfolioHistorySnapshot.query.count(), 0)
+            self.assertEqual(PortfolioMinuteSnapshot.query.count(), 0)
 
     def test_snapshot_rejects_invalid_json_without_writing(self):
         cases = [

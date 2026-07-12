@@ -12,7 +12,7 @@ import {
   getAssetTypeLabel,
   formatQuantityValue,
 } from '../lib/utils';
-import { PortfolioData, PortfolioAsset, PortfolioHistoryData, TradeRecord } from '../types';
+import { PortfolioData, PortfolioAsset, PortfolioHistoryData, PortfolioHistoryRange, TradeRecord } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -60,6 +60,8 @@ const pnlDisplayOptions = [
   { value: 'USD', label: '美元' },
   { value: 'ORIGINAL', label: '原始币种' },
 ] as const;
+
+const portfolioHistoryRanges: PortfolioHistoryRange[] = ['1d', '3d', '7d'];
 
 type AssetFilter = typeof assetFilters[number]['value'];
 type SortMode = typeof sortOptions[number]['value'];
@@ -151,9 +153,11 @@ const getAlertActionLabel = (alertType: string) => {
 
 const normalizePortfolioHistoryData = (
   data: PortfolioHistoryData,
-  fallbackCurrency: string
+  fallbackCurrency: string,
+  fallbackRange: PortfolioHistoryRange
 ): PortfolioHistoryData => ({
   currency: data?.currency || fallbackCurrency,
+  range: portfolioHistoryRanges.includes(data?.range as PortfolioHistoryRange) ? data.range : fallbackRange,
   points: Array.isArray(data?.points) ? data.points : [],
 });
 
@@ -163,6 +167,7 @@ export const Dashboard: React.FC = () => {
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [portfolioHistory, setPortfolioHistory] = useState<PortfolioHistoryData | null>(null);
   const [portfolioHistoryError, setPortfolioHistoryError] = useState('');
+  const [portfolioHistoryRange, setPortfolioHistoryRange] = useState<PortfolioHistoryRange>('1d');
   const [records, setRecords] = useState<TradeRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -188,6 +193,7 @@ export const Dashboard: React.FC = () => {
     quantity: '',
     amount: '',
   });
+  const portfolioHistoryRequestIdRef = useRef(0);
 
   const addPositionCurrency = addingAsset?.currency || 'CNY';
   const sellCurrency = sellingAsset?.currency || 'CNY';
@@ -233,16 +239,26 @@ export const Dashboard: React.FC = () => {
   }, []);
 
   const fetchPortfolioHistory = useCallback(async () => {
+    const requestId = portfolioHistoryRequestIdRef.current + 1;
+    portfolioHistoryRequestIdRef.current = requestId;
+    const requestedCurrency = settlementCurrency;
+    const requestedRange = portfolioHistoryRange;
+
     try {
       setPortfolioHistoryError('');
-      const params = new URLSearchParams({ currency: settlementCurrency });
+      const params = new URLSearchParams({
+        currency: requestedCurrency,
+        range: requestedRange,
+      });
       const data = await api.get<PortfolioHistoryData>(`/portfolio/history?${params.toString()}`);
-      setPortfolioHistory(normalizePortfolioHistoryData(data, settlementCurrency));
+      if (requestId !== portfolioHistoryRequestIdRef.current) return;
+      setPortfolioHistory(normalizePortfolioHistoryData(data, requestedCurrency, requestedRange));
     } catch (error) {
+      if (requestId !== portfolioHistoryRequestIdRef.current) return;
       console.error('获取组合历史净值失败:', error);
       setPortfolioHistoryError(error instanceof Error ? error.message : '历史净值加载失败');
     }
-  }, [settlementCurrency]);
+  }, [portfolioHistoryRange, settlementCurrency]);
 
   const fetchPortfolio = useCallback(async (options?: { refresh?: boolean; silent?: boolean }) => {
     const params = new URLSearchParams({
@@ -317,7 +333,7 @@ export const Dashboard: React.FC = () => {
 
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchPortfolio(), fetchHistory(), fetchPortfolioHistory()]);
+      await Promise.all([fetchPortfolio(), fetchHistory()]);
       if (!disposed) {
         fetchPortfolio({ refresh: true, silent: true });
         checkAlerts();
@@ -334,7 +350,11 @@ export const Dashboard: React.FC = () => {
       disposed = true;
       clearInterval(interval);
     };
-  }, [checkAlerts, fetchHistory, fetchPortfolio, fetchPortfolioHistory]);
+  }, [checkAlerts, fetchHistory, fetchPortfolio]);
+
+  useEffect(() => {
+    fetchPortfolioHistory();
+  }, [fetchPortfolioHistory]);
 
   useEffect(() => {
     if (user?.preferred_currency && user.preferred_currency !== settlementCurrency) {
@@ -379,7 +399,6 @@ export const Dashboard: React.FC = () => {
     try {
       const refreshed = await fetchPortfolio({ refresh: true });
       if (!refreshed) return;
-      await api.post('/portfolio/history/snapshot', { currency: settlementCurrency });
       await Promise.all([
         fetchPortfolioHistory(),
         fetchHistory(),
@@ -387,7 +406,7 @@ export const Dashboard: React.FC = () => {
       ]);
     } catch (error) {
       console.error('刷新组合数据失败:', error);
-      setPortfolioHistoryError(error instanceof Error ? error.message : '历史净值快照生成失败');
+      setPortfolioHistoryError(error instanceof Error ? error.message : '历史净值加载失败');
     }
   };
 
@@ -744,6 +763,8 @@ export const Dashboard: React.FC = () => {
         <PortfolioHistoryChart
           currency={portfolioHistory?.currency || settlementCurrency}
           points={portfolioHistory?.points || []}
+          selectedRange={portfolioHistoryRange}
+          onRangeChange={setPortfolioHistoryRange}
           error={portfolioHistoryError}
           onRetry={fetchPortfolioHistory}
         />
