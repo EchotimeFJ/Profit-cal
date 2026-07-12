@@ -19,6 +19,7 @@ class User(db.Model):
     trade_records = db.relationship('TradeRecord', backref='user', lazy=True, cascade='all, delete-orphan')
     portfolio_snapshots = db.relationship('PortfolioSnapshot', backref='user', lazy=True, cascade='all, delete-orphan')
     portfolio_history_snapshots = db.relationship('PortfolioHistorySnapshot', backref='user', lazy=True, cascade='all, delete-orphan')
+    portfolio_minute_snapshots = db.relationship('PortfolioMinuteSnapshot', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password, method=PASSWORD_HASH_METHOD)
@@ -161,6 +162,43 @@ class PortfolioHistorySnapshot(db.Model):
             'id': self.id,
             'user_id': self.user_id,
             'date': self.snapshot_date.isoformat(),
+            'settlement_currency': self.settlement_currency,
+            'total_investment': self.total_investment,
+            'total_current_value': self.total_current_value,
+            'total_profit': self.total_profit,
+            'total_profit_percent': self.total_profit_percent,
+            'daily_profit': self.daily_profit,
+            'payload': self.payload,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+        }
+
+
+class PortfolioMinuteSnapshot(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    snapshot_minute = db.Column(db.DateTime, nullable=False, index=True)
+    settlement_currency = db.Column(db.String(10), nullable=False, default='CNY')
+    total_investment = db.Column(db.Float, nullable=False, default=0.0)
+    total_current_value = db.Column(db.Float, nullable=False, default=0.0)
+    total_profit = db.Column(db.Float, nullable=False, default=0.0)
+    total_profit_percent = db.Column(db.Float, nullable=False, default=0.0)
+    daily_profit = db.Column(db.Float, nullable=False, default=0.0)
+    payload = db.Column(db.Text, nullable=False, default='{}')
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'snapshot_minute', 'settlement_currency', name='uq_portfolio_minute_user_minute_currency'),
+    )
+
+    def to_dict(self):
+        timestamp = self.snapshot_minute.isoformat()
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'timestamp': timestamp,
+            'date': timestamp,
             'settlement_currency': self.settlement_currency,
             'total_investment': self.total_investment,
             'total_current_value': self.total_current_value,

@@ -1,8 +1,8 @@
 import json
-from datetime import date
+from datetime import date, datetime
 
 from db import db
-from models import Asset, PortfolioHistorySnapshot, User
+from models import Asset, PortfolioHistorySnapshot, PortfolioMinuteSnapshot, User
 from routes.prices import SUPPORTED_SETTLEMENT_CURRENCIES, _build_portfolio_payload
 from services.currency_rules import currency_for_asset_type
 from services.price_fetcher import PriceFetcher
@@ -79,6 +79,8 @@ def build_history_snapshot_payload(user, settlement_currency, *, use_live_prices
         try:
             live_assets = [_HistoryLiveAssetView(asset) for asset in assets]
             portfolio_payload = _build_portfolio_payload(user, live_assets, settlement_currency, 'ORIGINAL')
+            if any(item.get('error') for item in portfolio_payload.get('portfolio', [])):
+                return _baseline_payload_from_assets(user.id, settlement_currency)
             summary = portfolio_payload['summary']
             return {
                 'total_investment': summary['total_investment'],
@@ -95,6 +97,11 @@ def build_history_snapshot_payload(user, settlement_currency, *, use_live_prices
         except Exception:
             db.session.rollback()
     return _baseline_payload_from_assets(user.id, settlement_currency)
+
+
+def truncate_to_minute(value=None):
+    value = value or datetime.utcnow()
+    return value.replace(second=0, microsecond=0)
 
 
 def upsert_history_snapshot(user, settlement_currency='CNY', snapshot_date=None, *, use_live_prices=True):
@@ -121,6 +128,61 @@ def upsert_history_snapshot(user, settlement_currency='CNY', snapshot_date=None,
     snapshot.daily_profit = data['daily_profit']
     snapshot.payload = json.dumps(data['payload'], ensure_ascii=False)
     return snapshot
+
+
+def upsert_minute_snapshot(user, settlement_currency=None, collected_at=None, *, use_live_prices=True):
+    snapshot_minute = truncate_to_minute(collected_at)
+    settlement_currency = normalize_history_currency(settlement_currency, user)
+    data = build_history_snapshot_payload(user, settlement_currency, use_live_prices=use_live_prices)
+    snapshot = PortfolioMinuteSnapshot.query.filter_by(
+        user_id=user.id,
+        snapshot_minute=snapshot_minute,
+        settlement_currency=settlement_currency,
+    ).first()
+    if snapshot is None:
+        snapshot = PortfolioMinuteSnapshot(
+            user_id=user.id,
+            snapshot_minute=snapshot_minute,
+            settlement_currency=settlement_currency,
+        )
+        db.session.add(snapshot)
+
+    snapshot.total_investment = data['total_investment']
+    snapshot.total_current_value = data['total_current_value']
+    snapshot.total_profit = data['total_profit']
+    snapshot.total_profit_percent = data['total_profit_percent']
+    snapshot.daily_profit = data['daily_profit']
+    snapshot.payload = json.dumps(data['payload'], ensure_ascii=False)
+    snapshot.updated_at = datetime.utcnow()
+    return snapshot
+
+
+def collect_all_user_minute_snapshots(collected_at=None, *, use_live_prices=True):
+    snapshot_minute = truncate_to_minute(collected_at)
+    result = {
+        'snapshot_minute': snapshot_minute.isoformat(),
+        'created_or_updated': 0,
+        'failed': 0,
+        'errors': [],
+    }
+
+    for user in User.query.order_by(User.id.asc()).all():
+        currency = normalize_history_currency(None, user)
+        try:
+            upsert_minute_snapshot(
+                user,
+                currency,
+                collected_at=snapshot_minute,
+                use_live_prices=use_live_prices,
+            )
+            db.session.commit()
+            result['created_or_updated'] += 1
+        except Exception as exc:
+            db.session.rollback()
+            result['failed'] += 1
+            result['errors'].append({'user_id': user.id, 'error': str(exc)})
+
+    return result
 
 
 def migrate_existing_users_history():

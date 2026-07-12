@@ -2,6 +2,8 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime
+from unittest.mock import patch
 
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -13,7 +15,9 @@ os.environ['JWT_SECRET_KEY'] = 'test-jwt-secret-for-portfolio-history'
 
 from app import app  # noqa: E402
 from db import db  # noqa: E402
-from models import PortfolioHistorySnapshot, User  # noqa: E402
+from models import Alert, Asset, PortfolioHistorySnapshot, PortfolioMinuteSnapshot, TradeRecord, User  # noqa: E402
+from scripts.migrate_portfolio_minute_history import ensure_portfolio_minute_history_table  # noqa: E402
+from services.portfolio_history import collect_all_user_minute_snapshots, upsert_minute_snapshot  # noqa: E402
 
 
 class PortfolioHistoryTestCase(unittest.TestCase):
@@ -110,6 +114,197 @@ class PortfolioHistoryTestCase(unittest.TestCase):
         self.assertEqual(post_response.status_code, 404)
         with app.app_context():
             self.assertEqual(PortfolioHistorySnapshot.query.count(), 0)
+
+    def test_minute_migration_only_creates_new_table_without_touching_existing_data(self):
+        with app.app_context():
+            user = User.query.filter_by(username='alice').one()
+            asset = Asset(
+                user_id=user.id,
+                name='中国铝业',
+                symbol='601600.SS',
+                asset_type='a_stock',
+                buy_price=10,
+                quantity=100,
+                currency='CNY',
+            )
+            db.session.add(asset)
+            db.session.flush()
+            trade = TradeRecord(
+                user_id=user.id,
+                asset_id=asset.id,
+                action='buy',
+                asset_name=asset.name,
+                symbol=asset.symbol,
+                asset_type=asset.asset_type,
+                price=10,
+                quantity=100,
+                amount=1000,
+                currency='CNY',
+                cost_basis=1000,
+            )
+            alert = Alert(
+                user_id=user.id,
+                asset_id=asset.id,
+                target_price=12,
+                alert_type='above',
+                notification_method='browser',
+            )
+            db.session.add_all([trade, alert])
+            db.session.commit()
+            PortfolioMinuteSnapshot.__table__.drop(db.engine, checkfirst=True)
+
+            before = {
+                'asset_quantity': asset.quantity,
+                'trade_count': TradeRecord.query.count(),
+                'alert_count': Alert.query.count(),
+                'daily_history_count': PortfolioHistorySnapshot.query.count(),
+            }
+
+            ensure_portfolio_minute_history_table()
+            ensure_portfolio_minute_history_table()
+
+            self.assertEqual(db.session.get(Asset, asset.id).quantity, before['asset_quantity'])
+            self.assertEqual(TradeRecord.query.count(), before['trade_count'])
+            self.assertEqual(Alert.query.count(), before['alert_count'])
+            self.assertEqual(PortfolioHistorySnapshot.query.count(), before['daily_history_count'])
+            self.assertEqual(PortfolioMinuteSnapshot.query.count(), 0)
+
+    def test_minute_snapshot_upsert_is_idempotent_and_updates_same_minute(self):
+        collected_at = datetime(2026, 7, 12, 10, 45, 30)
+        with app.app_context():
+            user = User.query.filter_by(username='alice').one()
+            payloads = [
+                {
+                    'total_investment': 1000,
+                    'total_current_value': 1100,
+                    'total_profit': 100,
+                    'total_profit_percent': 10,
+                    'daily_profit': 15,
+                    'payload': {'baseline_source': 'first'},
+                },
+                {
+                    'total_investment': 1000,
+                    'total_current_value': 1200,
+                    'total_profit': 200,
+                    'total_profit_percent': 20,
+                    'daily_profit': 30,
+                    'payload': {'baseline_source': 'second'},
+                },
+            ]
+
+            with patch('services.portfolio_history.build_history_snapshot_payload', side_effect=payloads):
+                first = upsert_minute_snapshot(user, 'CNY', collected_at=collected_at)
+                second = upsert_minute_snapshot(user, 'CNY', collected_at=collected_at)
+                db.session.commit()
+
+            self.assertEqual(first.id, second.id)
+            self.assertEqual(PortfolioMinuteSnapshot.query.count(), 1)
+            snapshot = PortfolioMinuteSnapshot.query.one()
+            self.assertEqual(snapshot.snapshot_minute, datetime(2026, 7, 12, 10, 45))
+            self.assertEqual(snapshot.total_current_value, 1200)
+            self.assertIn('second', snapshot.payload)
+
+    def test_minute_collection_records_all_users_with_preferred_currency(self):
+        collected_at = datetime(2026, 7, 12, 11, 1, 59)
+        with app.app_context():
+            alice = User.query.filter_by(username='alice').one()
+            alice.preferred_currency = 'USD'
+            bob = User(username='bob', email='bob@example.com', preferred_currency='HKD')
+            bob.set_password('samepass123')
+            db.session.add(bob)
+            db.session.commit()
+
+            def fake_payload(user, settlement_currency, **_kwargs):
+                return {
+                    'total_investment': user.id * 100,
+                    'total_current_value': user.id * 120,
+                    'total_profit': user.id * 20,
+                    'total_profit_percent': 20,
+                    'daily_profit': user.id,
+                    'payload': {'user_id': user.id, 'currency': settlement_currency},
+                }
+
+            with patch('services.portfolio_history.build_history_snapshot_payload', side_effect=fake_payload):
+                result = collect_all_user_minute_snapshots(collected_at=collected_at)
+
+            self.assertEqual(result['created_or_updated'], 2)
+            self.assertEqual(result['failed'], 0)
+            snapshots = PortfolioMinuteSnapshot.query.order_by(PortfolioMinuteSnapshot.user_id.asc()).all()
+            self.assertEqual([snapshot.settlement_currency for snapshot in snapshots], ['USD', 'HKD'])
+            self.assertTrue(all(snapshot.snapshot_minute == datetime(2026, 7, 12, 11, 1) for snapshot in snapshots))
+
+    def test_minute_collection_falls_back_on_price_failure_and_continues_users(self):
+        collected_at = datetime(2026, 7, 12, 12, 0)
+        with app.app_context():
+            alice = User.query.filter_by(username='alice').one()
+            db.session.add(Asset(
+                user_id=alice.id,
+                name='中国铝业',
+                symbol='601600.SS',
+                asset_type='a_stock',
+                buy_price=10,
+                quantity=100,
+                currency='CNY',
+            ))
+            bob = User(username='bob', email='bob@example.com', preferred_currency='CNY')
+            bob.set_password('samepass123')
+            db.session.add(bob)
+            db.session.flush()
+            db.session.add(Asset(
+                user_id=bob.id,
+                name='纳指ETF',
+                symbol='QQQ',
+                asset_type='us_stock',
+                buy_price=100,
+                quantity=2,
+                currency='USD',
+            ))
+            db.session.commit()
+
+            def fake_live_payload(user, _assets, _settlement_currency, _pnl_display_mode):
+                if user.username == 'alice':
+                    raise RuntimeError('prices unavailable')
+                return {
+                    'summary': {
+                        'total_investment': 1400,
+                        'total_current_value': 1600,
+                        'total_profit': 200,
+                        'total_profit_percent': 14.285714,
+                        'daily_profit': 20,
+                    },
+                    'portfolio': [],
+                }
+
+            def fake_rate(from_currency, to_currency):
+                if from_currency == to_currency:
+                    return 1.0
+                if (from_currency, to_currency) == ('USD', 'CNY'):
+                    return 7.0
+                return 1.0
+
+            before = {
+                'asset_count': Asset.query.count(),
+                'trade_count': TradeRecord.query.count(),
+                'alert_count': Alert.query.count(),
+                'daily_history_count': PortfolioHistorySnapshot.query.count(),
+            }
+
+            with patch('services.portfolio_history._build_portfolio_payload', side_effect=fake_live_payload):
+                with patch('services.portfolio_history.PriceFetcher.get_exchange_rate', side_effect=fake_rate):
+                    result = collect_all_user_minute_snapshots(collected_at=collected_at)
+
+            self.assertEqual(result['created_or_updated'], 2)
+            self.assertEqual(result['failed'], 0)
+            alice_snapshot = PortfolioMinuteSnapshot.query.filter_by(user_id=alice.id).one()
+            bob_snapshot = PortfolioMinuteSnapshot.query.filter_by(user_id=bob.id).one()
+            self.assertEqual(alice_snapshot.total_current_value, 1000)
+            self.assertIn('cost_basis', alice_snapshot.payload)
+            self.assertEqual(bob_snapshot.total_current_value, 1600)
+            self.assertIn('live_portfolio', bob_snapshot.payload)
+            self.assertEqual(Asset.query.count(), before['asset_count'])
+            self.assertEqual(TradeRecord.query.count(), before['trade_count'])
+            self.assertEqual(Alert.query.count(), before['alert_count'])
+            self.assertEqual(PortfolioHistorySnapshot.query.count(), before['daily_history_count'])
 
 
 if __name__ == '__main__':
