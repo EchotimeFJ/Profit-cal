@@ -1,14 +1,20 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import get_jwt_identity, jwt_required
 
 from db import db
-from models import PortfolioHistorySnapshot, User
+from models import PortfolioHistorySnapshot, PortfolioMinuteSnapshot, User
 from services.portfolio_history import normalize_history_currency, upsert_history_snapshot
 
 
 portfolio_history_bp = Blueprint('portfolio_history', __name__, url_prefix='/api/portfolio')
+
+HISTORY_RANGE_DAYS = {
+    '1d': 1,
+    '3d': 3,
+    '7d': 7,
+}
 
 
 def _current_user_id():
@@ -31,18 +37,29 @@ def get_portfolio_history():
     if user is None:
         return _user_not_found_response()
 
+    range_key = (request.args.get('range') or '1d').lower()
+    if range_key not in HISTORY_RANGE_DAYS:
+        return jsonify({'error': '不支持的历史范围'}), 400
+
     currency = normalize_history_currency(request.args.get('currency'), user)
+    cutoff = datetime.utcnow() - timedelta(days=HISTORY_RANGE_DAYS[range_key])
     snapshots = (
-        PortfolioHistorySnapshot.query
-        .filter_by(user_id=user_id, settlement_currency=currency)
-        .order_by(PortfolioHistorySnapshot.snapshot_date.asc(), PortfolioHistorySnapshot.id.asc())
+        PortfolioMinuteSnapshot.query
+        .filter(
+            PortfolioMinuteSnapshot.user_id == user_id,
+            PortfolioMinuteSnapshot.settlement_currency == currency,
+            PortfolioMinuteSnapshot.snapshot_minute >= cutoff,
+        )
+        .order_by(PortfolioMinuteSnapshot.snapshot_minute.asc(), PortfolioMinuteSnapshot.id.asc())
         .all()
     )
     return jsonify({
         'currency': currency,
+        'range': range_key,
         'points': [
             {
-                'date': snapshot.snapshot_date.isoformat(),
+                'timestamp': snapshot.snapshot_minute.isoformat(),
+                'date': snapshot.snapshot_minute.isoformat(),
                 'total_investment': snapshot.total_investment,
                 'total_current_value': snapshot.total_current_value,
                 'total_profit': snapshot.total_profit,

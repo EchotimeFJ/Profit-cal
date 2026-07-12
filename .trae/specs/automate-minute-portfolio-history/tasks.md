@@ -6,12 +6,12 @@
   - [x] SubTask 1.4: 新增每分钟可调度脚本，支持非交互执行并输出采集结果
   - [x] SubTask 1.5: 新增后端测试，覆盖迁移安全、幂等写入、全用户采集、价格失败 fallback、只写新表不改旧数据
 
-- [ ] Task 2: 后端历史查询接口改为分钟级范围查询
-  - [ ] SubTask 2.1: 扩展 `GET /api/portfolio/history` 支持 `range=1d|3d|7d`
-  - [ ] SubTask 2.2: 查询当前用户分钟级快照，按 timestamp 升序返回
-  - [ ] SubTask 2.3: 对非法 range 返回 400，且不写数据库
-  - [ ] SubTask 2.4: 保持旧 `currency` 参数兼容，默认使用用户 preferred currency
-  - [ ] SubTask 2.5: 新增接口测试，覆盖用户隔离、范围过滤、排序、空状态、非法范围
+- [x] Task 2: 后端历史查询接口改为分钟级范围查询
+  - [x] SubTask 2.1: 扩展 `GET /api/portfolio/history` 支持 `range=1d|3d|7d`
+  - [x] SubTask 2.2: 查询当前用户分钟级快照，按 timestamp 升序返回
+  - [x] SubTask 2.3: 对非法 range 返回 400，且不写数据库
+  - [x] SubTask 2.4: 保持旧 `currency` 参数兼容，默认使用用户 preferred currency
+  - [x] SubTask 2.5: 新增接口测试，覆盖用户隔离、范围过滤、排序、空状态、非法范围
 
 - [ ] Task 3: 前端历史净值图接入自动分钟级数据
   - [ ] SubTask 3.1: 更新 `PortfolioHistoryPoint` 类型，支持 `timestamp` 字段并兼容 `date`
