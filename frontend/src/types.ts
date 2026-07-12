@@ -121,8 +121,11 @@ export interface AssetDetailData {
   records: TradeRecord[];
 }
 
+export type PortfolioHistoryRange = '1d' | '3d' | '7d';
+
 export interface PortfolioHistoryPoint {
-  date: string;
+  timestamp?: string;
+  date?: string;
   total_investment: number;
   total_current_value: number;
   total_profit: number;
@@ -132,6 +135,7 @@ export interface PortfolioHistoryPoint {
 
 export interface PortfolioHistoryData {
   currency: string;
+  range?: PortfolioHistoryRange;
   points: PortfolioHistoryPoint[];
 }
 
